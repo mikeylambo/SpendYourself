@@ -4,19 +4,21 @@ import { CARDS, rewardPool, STARTERS } from "../data/cards.ts";
 import { EVENT_LIST, EVENTS, type EventOps } from "../data/events.ts";
 import { ENCOUNTERS, FOES } from "../data/foes.ts";
 import { tuning } from "../data/tuning.ts";
+import { asc } from "../data/turns.ts";
 import { Combat, createCombat } from "./combat.ts";
 import { int, pick, RunRng } from "./rng.ts";
 import type { ActMap, MapNode, NodeKind, RunState, ShopStock } from "./state.ts";
 import type { Agent, FoeTier, Husk, MoltId, Presenter, Rarity } from "./types.ts";
 
-export const LAST_ACT = 1;
+export const LAST_ACT = 3;
+const BOSS_BONE: Record<number, string> = { 1: "bone.queen_carapace", 2: "bone.spore_heart", 3: "bone.drowned_pearl" };
 
 /** Run-level decisions: deck picks at rests, events and the Burrower. */
 export interface RunAgent extends Agent {
   chooseDeck(prompt: string, indices: number[]): Promise<number | null>;
 }
 
-export function newRun(opts: { seed: string; molt: MoltId; onboarding: boolean; ascension?: number }): RunState {
+export function newRun(opts: { seed: string; molt: MoltId; onboarding: boolean; ascension?: number; daily?: string }): RunState {
   const rng = new RunRng(opts.seed);
   const starter = STARTERS[opts.molt];
   if (!starter) throw new Error(`Molt ${opts.molt} is not playable yet`);
@@ -48,15 +50,18 @@ export function newRun(opts: { seed: string; molt: MoltId; onboarding: boolean; 
     actHuskBonus: 0,
     screen: { kind: "map" },
     startedAt: Date.now(),
+    ...(opts.daily ? { daily: opts.daily } : {}),
   };
-  run.map = generateMap(1, rng.stream("map"), opts.onboarding);
+  const a = run.ascension;
+  run.scars = asc(a, 11) ? 2 : asc(a, 4) ? 1 : 0;
+  run.map = generateMap(1, rng.stream("map"), opts.onboarding, a);
   run.rng = rng.states();
   return run;
 }
 
 // ---------- map ----------
 
-export function generateMap(act: number, rng: Rng, singleStart: boolean): ActMap {
+export function generateMap(act: number, rng: Rng, singleStart: boolean, ascension = 0): ActMap {
   const { rows: R, width: Wd, paths } = tuning.map;
   const grid: (MapNode | null)[][] = Array.from({ length: R }, () => Array<MapNode | null>(Wd).fill(null));
   const node = (r: number, c: number): MapNode => (grid[r]![c] ??= { row: r, col: c, kind: "fight", next: [] });
@@ -94,6 +99,16 @@ export function generateMap(act: number, rng: Rng, singleStart: boolean): ActMap
           n.kind = k;
           break;
         }
+      }
+    }
+  }
+  // Turns 2 and 17 take rests away (never the one before the boss).
+  let cut = (asc(ascension, 2) ? 1 : 0) + (asc(ascension, 17) ? 1 : 0);
+  for (let r = 5; r < R - 1 && cut > 0; r++) {
+    for (const n of grid[r]!) {
+      if (n && n.kind === "rest" && cut > 0) {
+        n.kind = "fight";
+        cut--;
       }
     }
   }
@@ -182,12 +197,13 @@ export class RunController {
     return [...pick(rng, i < 3 ? pool.easy : pool.hard)];
   }
 
-  async startFight(encounter: string[], kind: FoeTier, opts: { hp?: number; rare?: boolean } = {}): Promise<void> {
+  async startFight(encounter: string[], kind: FoeTier, opts: { hp?: number; rare?: boolean; node?: NodeKind } = {}): Promise<void> {
     const run = this.run;
     const s = createCombat(run, encounter, kind, this.rng.stream("combat"));
     if (opts.hp) for (const f of s.foes) f.hp = Math.ceil(f.max * opts.hp);
-    if (run.ascension >= 1 && kind === "elite") for (const f of s.foes) f.hp = f.max = Math.ceil(f.max * 1.1);
-    run.screen = { kind: "combat", combat: s, node: kind === "normal" ? "fight" : kind };
+    const eliteHp = asc(run.ascension, 15) ? 1.2 : asc(run.ascension, 1) ? 1.1 : 1;
+    if (kind === "elite") for (const f of s.foes) f.hp = f.max = Math.ceil(f.max * eliteHp);
+    run.screen = { kind: "combat", combat: s, node: opts.node ?? (kind === "normal" ? "fight" : kind) };
     this.pendingRare = !!opts.rare;
     this.combat = new Combat(s, run, this.rng.stream("combat"), this.agent, this.p);
     await this.combat.begin();
@@ -207,6 +223,11 @@ export class RunController {
       run.screen = { kind: "over", win: false, reason: s.lostReason };
       return true;
     }
+    if (node === "finale") {
+      run.stats.fights++;
+      run.screen = { kind: "over", win: true, reason: "ring", ending: s.ending ?? "devour" };
+      return true;
+    }
     run.stats.fights++;
     run.fightIndex++;
     if (s.kind === "elite") run.stats.elites++;
@@ -224,11 +245,12 @@ export class RunController {
     }
     const loot = this.rng.stream("loot");
     const e = tuning.economy;
-    const glint = s.kind === "boss" ? e.glintBoss : s.kind === "elite" ? int(loot, ...e.glintElite) : int(loot, ...e.glintFight);
+    const base = s.kind === "boss" ? e.glintBoss : s.kind === "elite" ? int(loot, ...e.glintElite) : int(loot, ...e.glintFight);
+    const glint = Math.round(base * (asc(run.ascension, 14) ? 0.75 : 1));
     run.glint += glint;
     let bone: string | null = null;
     if (s.kind === "elite") bone = this.rollBone();
-    if (s.kind === "boss") bone = "bone.queen_carapace";
+    if (s.kind === "boss") bone = BOSS_BONE[run.act] ?? null;
     if (run.egg > 0 && --run.egg === 0) bone = bone ?? this.rollBone();
     if (bone) this.gainBone(bone);
     const husks = this.huskOptions(s.husks, s.kind);
@@ -254,7 +276,7 @@ export class RunController {
       else out.push({ ...h });
     }
     const loot = this.rng.stream("loot");
-    const want = tuning.devour.huskOptions + (this.has("bone.pearl") ? 1 : 0) + this.run.actHuskBonus + (kind === "boss" ? 1 : 0);
+    const want = Math.max(1, tuning.devour.huskOptions + (this.has("bone.pearl") ? 1 : 0) + this.run.actHuskBonus + (kind === "boss" ? 1 : 0) - (asc(this.run.ascension, 9) ? 1 : 0));
     let guard = 0;
     while (out.length < want && guard++ < 50) {
       const id = this.randomCard(kind === "boss" || this.pendingRare ? "R" : this.rollRarity(kind === "elite"));
@@ -293,10 +315,27 @@ export class RunController {
     const run = this.run;
     this.devourRitePending = false;
     if (run.screen.kind === "reward" && run.screen.node === "boss") {
-      run.screen = run.act >= LAST_ACT ? { kind: "over", win: true, reason: "act" } : { kind: "actEnd" };
+      run.screen = { kind: "actEnd" };
       return;
     }
     run.screen = { kind: "map" };
+  }
+
+  /** From the act-end plate: descend to the next act, or meet the Tail after the last. */
+  async descend(): Promise<void> {
+    const run = this.run;
+    if (run.screen.kind !== "actEnd") return;
+    if (run.act >= LAST_ACT) {
+      await this.startFight(["boss.tail"], "boss", { node: "finale" });
+      return;
+    }
+    run.act++;
+    run.map = generateMap(run.act, this.rng.stream("map"), false, run.ascension);
+    run.row = -1;
+    run.col = -1;
+    run.actHuskBonus = 0;
+    run.screen = { kind: "map" };
+    void this.p.emit({ type: "act.enter", act: run.act });
   }
 
   // ----- rest -----
@@ -306,7 +345,7 @@ export class RunController {
     if (run.screen.kind !== "rest" || run.screen.done) return false;
     if (choice === "mend") {
       if (!run.scars) return false;
-      this.mend(this.has("bone.salt_lick") ? 3 : tuning.economy.restMend);
+      this.mend((this.has("bone.salt_lick") ? 3 : tuning.economy.restMend) - (asc(run.ascension, 16) ? 1 : 0));
     } else if (choice === "coil") {
       const times = this.has("bone.cocoon") ? 2 : 1;
       let any = false;
@@ -506,6 +545,7 @@ export class RunController {
     run.bones.push(id);
     if (id === "bone.rib") run.maxHand += 1;
     if (id === "bone.leviathan_rib") run.maxHand += 3;
+    if (id === "bone.drowned_pearl") run.maxHand += 2;
     if (id === "bone.copper") run.glint += 25;
     if (id === "bone.old_skin") run.scars = Math.min(2, run.scars);
     run.stats.maxHandPeak = Math.max(run.stats.maxHandPeak, run.maxHand);

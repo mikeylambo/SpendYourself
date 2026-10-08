@@ -269,6 +269,142 @@ const CREATURES: Record<string, () => string> = {
   },
 };
 
+// ---------- Acts 2 and 3: tall and branching roots, long and trailing deep water ----------
+function tube(d: string, w: number, rings = 0): string {
+  let s = pathS(d, w + 5, `stroke-linejoin="round"`);
+  s += `<path d="${d}" fill="none" stroke="#ece3cf" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round"/>`;
+  s += `<path d="${d}" fill="none" stroke="url(#hatch)" stroke-width="${w}" stroke-linecap="round" opacity=".5" transform="translate(3,5)"/>`;
+  if (rings) s += `<path d="${d}" fill="none" stroke="${INK}" stroke-width="${w - 2}" stroke-dasharray="1.5 ${rings}" opacity=".7"/>`;
+  return s;
+}
+function branch(x: number, y: number, len: number, ang: number, depth: number, w = 3): string {
+  if (depth <= 0) return "";
+  const x2 = x + Math.cos(ang) * len;
+  const y2 = y + Math.sin(ang) * len;
+  let s = line([[x, y], [x2, y2]], w);
+  s += branch(x2, y2, len * 0.66, ang - 0.5, depth - 1, Math.max(1.2, w - 0.8));
+  s += branch(x2, y2, len * 0.6, ang + 0.45, depth - 1, Math.max(1.2, w - 0.8));
+  return s;
+}
+const cap = (cx: number, cy: number, r: number, shade = "hatch") => form(`M${cx - r},${cy} C${cx - r},${cy - r * 1.1} ${cx + r},${cy - r * 1.1} ${cx + r},${cy} Z`, shade, 4, 6);
+const mushroom = (cx: number, base: number, hgt: number, r: number) =>
+  form(`M${cx - r * 0.25},${base} L${cx - r * 0.18},${base - hgt} L${cx + r * 0.18},${base - hgt} L${cx + r * 0.25},${base}Z`, "hatch-fine", 2, 3) + cap(cx, base - hgt + 2, r) +
+  pathS(`M${cx - r * 0.8},${base - hgt} L${cx + r * 0.8},${base - hgt}`, 1.2);
+const eye = (x: number, y: number, r = 6, lit = false) => `<circle cx="${x}" cy="${y}" r="${r}" fill="${lit ? "#bfe8ec" : "#ece3cf"}" stroke="${INK}" stroke-width="2"/>${dot(x, y, r * 0.4)}`;
+const tentacle = (x: number, y: number, len: number, curl: number) => pathS(`M${x},${y} c${curl},${len * 0.3} ${-curl},${len * 0.6} ${curl * 0.5},${len}`, 2.2);
+const fish = (cx: number, cy: number, w: number, h: number) =>
+  form(`M${cx - w},${cy} C${cx - w * 0.5},${cy - h} ${cx + w * 0.6},${cy - h} ${cx + w},${cy} C${cx + w * 0.6},${cy + h} ${cx - w * 0.5},${cy + h} ${cx - w},${cy}Z`, "hatch", 6, 8) +
+  form(`M${cx - w},${cy} L${cx - w - 30},${cy - 22} L${cx - w - 22},${cy} L${cx - w - 30},${cy + 22}Z`, "cross", 2, 3);
+
+Object.assign(CREATURES, {
+  "foe.sap_leech": () => shadow(100, 180, 40) + tube("M100,176 C70,140 130,110 96,70 C84,54 104,40 112,34", 30, 6) + `<circle cx="112" cy="32" r="9" fill="#ece3cf" stroke="${INK}" stroke-width="2"/><circle cx="112" cy="32" r="4" fill="url(#cross)"/>`,
+  "foe.spore_puff": () => {
+    let s = shadow(100, 176, 50) + form(E(100, 130, 46, 42), "stipple", 0, 0) + form(E(100, 130, 46, 42), "hatch", 9, 11);
+    for (let i = 0; i < 9; i++) s += `<circle cx="${60 + i * 10}" cy="${70 - (i % 3) * 14}" r="${2 + (i % 2)}" fill="none" stroke="${INK}" stroke-width="1.2"/>`;
+    return s + pathS("M86,96 q14,-8 28,0", 1.6);
+  },
+  "foe.thorn_knot": () => {
+    let s = shadow(100, 182, 60) + tube("M50,150 C40,80 150,80 140,130 C130,180 60,170 80,110 C96,62 160,90 150,160", 18);
+    for (const [x, y, a] of [[52, 110, -2.4], [96, 78, -1.6], [140, 100, -0.6], [130, 160, 0.6], [74, 150, 2.2], [110, 120, -1]] as const) s += `<path d="M${x},${y} l${Math.cos(a) * 16},${Math.sin(a) * 16} l${Math.cos(a + 1.4) * 6},${Math.sin(a + 1.4) * 6}Z" fill="${INK}"/>`;
+    return s;
+  },
+  "foe.fungus_priest": () => shadow(100, 184, 46) + form("M70,182 C66,140 76,100 100,92 C124,100 134,140 130,182Z", "hatch", 6, 8) + cap(100, 92, 48, "cross") + pathS("M60,92 L140,92", 1.6) + `<path d="M84,120 L84,160 M116,120 L116,160" stroke="${INK}" stroke-width="1.4"/>` + eye(90, 106, 4) + eye(110, 106, 4),
+  "foe.root_hound": () => {
+    let s = shadow(100, 184, 70) + form(E(100, 118, 54, 26, -6), "hatch", 7, 9);
+    for (const x of [62, 78, 122, 140]) s += branch(x, 132, 26, 1.5, 3, 3.2);
+    s += form("M140,96 C160,80 188,86 192,100 L170,108 L186,112 C176,122 156,122 144,112Z", "cross", 4, 5) + dot(170, 94, 2.6);
+    s += branch(60, 104, 22, -2.6, 3, 2.2) + branch(150, 90, 18, -1.9, 2, 2);
+    return s;
+  },
+  "foe.mold_twin": () => {
+    let s = shadow(100, 180, 56);
+    for (const [x, y, r] of [[80, 140, 34], [120, 132, 30], [100, 106, 26], [128, 98, 14]] as const) s += form(E(x, y, r, r * 0.9), "stipple", 0, 0) + form(E(x, y, r, r * 0.9), "hatch", 5, 6);
+    return s + dot(94, 104, 2.4) + dot(106, 104, 2.4);
+  },
+  "foe.mold_mite": () => shadow(100, 172, 36) + legs(100, 140, 50, 3, 26) + form(E(100, 130, 28, 24), "stipple", 0, 0) + form(E(100, 130, 28, 24), "hatch", 5, 6) + dot(94, 124, 2) + dot(106, 124, 2),
+  "foe.bark_beetle": () => shadow() + beetle(100, 120, 46, 42, `<path d="M70,110 l14,4 M74,128 l16,2 M112,104 l14,6 M116,124 l14,4 M98,140 l-10,8" stroke="${INK}" stroke-width="2.4"/>`),
+  "foe.strangler_vine": () => {
+    let s = shadow(100, 184, 40) + tube("M100,184 C40,150 160,120 96,92 C50,70 140,50 104,18", 12);
+    for (const [x, y, f] of [[70, 150, -1], [140, 124, 1], [64, 84, -1], [134, 56, 1]] as const) s += form(`M${x},${y} q${18 * f},-18 ${32 * f},-4 q-${16 * f},14 -${32 * f},4Z`, "hatch-fine", 2, 2);
+    return s;
+  },
+  "elite.rot_stag": () => {
+    let s = shadow(100, 186, 70) + form(E(96, 140, 50, 24), "cross", 8, 9);
+    for (const x of [62, 80, 112, 128]) s += line([[x, 156], [x - 2, 186]], 3);
+    s += form("M128,128 L150,82 L166,88 L150,134Z", "hatch", 3, 4) + form(E(160, 80, 16, 12, -20), "cross", 3, 4);
+    s += branch(152, 70, 26, -2.0, 4, 3) + branch(166, 68, 26, -1.0, 4, 3) + dot(166, 78, 2.5);
+    return s;
+  },
+  "elite.honey_fungus": () => shadow(100, 186, 80) + mushroom(60, 184, 60, 28) + mushroom(138, 184, 74, 32) + mushroom(98, 184, 104, 40) + mushroom(162, 184, 36, 18),
+  "elite.owl_bones": () => {
+    let s = shadow(100, 186, 60) + form("M56,170 C40,110 60,50 100,46 C140,50 160,110 144,170 Z", "cross", 9, 11);
+    for (let i = 0; i < 5; i++) s += pathS(`M${70 + i * 2},${110 + i * 12} Q100,${120 + i * 12} ${130 - i * 2},${110 + i * 12}`, 1.8);
+    s += `<circle cx="80" cy="82" r="20" fill="#ece3cf" stroke="${INK}" stroke-width="2.4"/><circle cx="120" cy="82" r="20" fill="#ece3cf" stroke="${INK}" stroke-width="2.4"/>`;
+    s += dot(80, 82, 9) + dot(120, 82, 9) + form("M94,98 L106,98 L100,114Z", "hatch", 1, 1) + pathS("M60,52 L72,64 M140,52 L128,64", 3);
+    return s;
+  },
+  "boss.choir_bind": () => shadow(100, 186, 50) + mushroom(100, 184, 90, 56) + pathS("M78,128 Q100,146 122,128", 3) + eye(84, 112, 5) + eye(116, 112, 5) + pathS("M40,170 c20,-30 40,-10 60,-40", 2),
+  "boss.choir_rot": () => shadow(100, 186, 50) + mushroom(100, 184, 110, 48) + pathS("M84,120 Q100,136 116,120", 3) + eye(88, 102, 5) + eye(112, 102, 5) + `<circle cx="70" cy="60" r="4" fill="${INK}"/><circle cx="132" cy="54" r="3" fill="${INK}"/>`,
+  "boss.choir_bloom": () => shadow(100, 186, 50) + mushroom(100, 184, 80, 62) + pathS("M80,138 Q100,124 120,138", 3) + eye(84, 122, 5) + eye(116, 122, 5) + form("M100,64 q-14,-24 0,-40 q14,16 0,40Z", "hatch-fine", 1, 1),
+  "foe.blind_eel": () => shadow(100, 182, 74) + tube("M20,150 C60,110 80,180 120,130 C150,94 170,120 186,96", 22, 9) + form(E(186, 92, 14, 10, -30), "cross", 2, 3) + pathS("M176,100 l14,8", 2),
+  "foe.lantern_angler": () => fish(108, 128, 60, 40) + pathS("M140,96 C150,50 120,40 100,52", 2.4) + `<circle cx="98" cy="56" r="11" fill="#bfe8ec" stroke="${INK}" stroke-width="2"/><circle cx="98" cy="56" r="20" fill="#bfe8ec" opacity=".18"/>` + pathS("M148,132 l14,6 l-12,4 l12,6", 2) + eye(150, 116, 5, true),
+  "foe.pressure_crab": () => {
+    let s = shadow(100, 184, 76) + legs(100, 140, 120, 4, 40) + form(E(100, 126, 56, 34), "cross", 8, 10);
+    for (const f of [-1, 1]) s += form(`M${100 + f * 50},110 C${100 + f * 80},80 ${100 + f * 92},70 ${100 + f * 84},50 C${100 + f * 70},58 ${100 + f * 64},74 ${100 + f * 76},86Z`, "hatch", 3, 4);
+    return s + eye(88, 98, 4) + eye(112, 98, 4);
+  },
+  "foe.drowned_choir": () => {
+    let s = "";
+    for (const [x, y] of [[66, 90], [134, 90], [100, 70]] as const) {
+      s += form(`M${x - 24},${y} C${x - 24},${y - 32} ${x + 24},${y - 32} ${x + 24},${y} Z`, "hatch", 3, 4);
+      for (let i = 0; i < 4; i++) s += tentacle(x - 15 + i * 10, y, 70 + i * 6, 6);
+      s += `<ellipse cx="${x}" cy="${y - 8}" rx="6" ry="9" fill="${INK}"/>`;
+    }
+    return s;
+  },
+  "foe.hagfish": () => shadow(100, 182, 70) + tube("M20,120 C50,160 90,90 130,130 C150,150 170,140 186,120", 18, 7) + `<circle cx="70" cy="160" r="4" fill="url(#stipple)" stroke="${INK}"/><circle cx="120" cy="164" r="6" fill="none" stroke="${INK}" stroke-width="1.4"/><circle cx="150" cy="172" r="3" fill="${INK}"/>` + pathS("M182,116 l10,-6 M184,124 l10,4", 1.6),
+  "foe.siphon": () => shadow(100, 186, 46) + form("M70,184 C64,130 70,80 86,50 L114,50 C130,80 136,130 130,184Z", "cross", 6, 8) + `<ellipse cx="100" cy="50" rx="16" ry="6" fill="${INK}"/>` + `<ellipse cx="120" cy="96" rx="9" ry="4" fill="${INK}"/>` + pathS("M100,40 q-10,-20 6,-30", 1.4),
+  "foe.abyss_jelly": () => {
+    let s = form("M40,96 C40,30 160,30 160,96 C140,104 60,104 40,96Z", "hatch-fine", 4, 6);
+    for (let i = 0; i < 8; i++) s += tentacle(48 + i * 15, 100, 70 + (i % 3) * 12, i % 2 ? 8 : -8);
+    return s + `<path d="M70,70 Q100,50 130,70" stroke="${INK}" stroke-width="1.4" fill="none"/>`;
+  },
+  "foe.trench_shark": () => fish(96, 118, 74, 34) + form("M90,86 L110,46 L120,88Z", "hatch", 2, 3) + `<path d="M150,124 l10,0 M146,130 l14,2" stroke="${INK}" stroke-width="2"/>` + pathS("M140,128 L164,132 L144,138", 1.8) + eye(146, 110, 4),
+  "elite.giant_isopod": () => {
+    let s = shadow(100, 186, 76) + legs(100, 150, 120, 6, 30);
+    for (let i = 0; i < 7; i++) s += form(E(100, 50 + i * 18, 60 - Math.abs(i - 3) * 6, 14), "hatch", 3, 5);
+    return s + pathS("M80,40 q-20,-20 -30,-30 M120,40 q20,-20 30,-30", 2);
+  },
+  "elite.siren": () => tube("M100,40 C60,80 140,110 96,150 C80,166 70,176 50,184", 26, 0) + form("M50,184 L26,170 L36,196Z", "cross", 2, 2) + `<circle cx="100" cy="38" r="18" fill="#ece3cf" stroke="${INK}" stroke-width="2.4"/>` + pathS("M84,30 C70,60 64,90 74,120 M116,30 C130,64 132,96 122,130 M92,24 C82,60 84,100 92,130", 1.4) + dot(94, 36, 2) + dot(106, 36, 2),
+  "elite.kraken_arm": () => {
+    let s = tube("M60,190 C30,120 90,80 130,90 C170,100 170,50 140,36 C120,28 110,48 126,54", 30);
+    for (let i = 0; i < 7; i++) s += `<circle cx="${70 + i * 10}" cy="${160 - i * 13}" r="4" fill="#ece3cf" stroke="${INK}" stroke-width="1.6"/>`;
+    return s;
+  },
+  "boss.drowned_mouth": () => {
+    let s = form(E(100, 108, 92, 82), "cross", 10, 12) + `<ellipse cx="100" cy="112" rx="62" ry="52" fill="${INK}"/>`;
+    for (let r = 0; r < 2; r++) for (let i = 0; i < 16; i++) {
+      const a = (i / 16) * Math.PI * 2;
+      const rx = 60 - r * 18;
+      const ry = 50 - r * 15;
+      const x = 100 + Math.cos(a) * rx;
+      const y = 112 + Math.sin(a) * ry;
+      s += `<path d="M${x.toFixed(1)},${y.toFixed(1)} L${(100 + Math.cos(a) * (rx - 12)).toFixed(1)},${(112 + Math.sin(a) * (ry - 12)).toFixed(1)}" stroke="#ece3cf" stroke-width="${3 - r}" stroke-linecap="round"/>`;
+    }
+    return s + eye(40, 60, 6, true) + eye(160, 60, 6, true);
+  },
+  "boss.tail": () => {
+    let s = tube("M30,180 C10,100 90,60 140,90 C190,120 170,180 120,170 C90,164 96,130 120,128", 30);
+    for (let i = 0; i < 12; i++) {
+      const t = i / 11;
+      const x = 34 + t * 130 + Math.sin(t * 6) * 6;
+      const y = 160 - Math.sin(t * Math.PI) * 80;
+      s += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="10" height="14" rx="1.5" fill="#ece3cf" stroke="${INK}" stroke-width="1.4" transform="rotate(${(t * 140 - 60).toFixed(0)} ${(x + 5).toFixed(1)} ${(y + 7).toFixed(1)})"/>`;
+    }
+    return s + pathS("M120,128 c10,-4 18,0 14,8", 2);
+  },
+});
+
 /** An engraved creature plate (200×200). */
 export function creatureSVG(id: string, phase = 1): string {
   const url = artFor(id);
@@ -398,4 +534,20 @@ export function boneGlyph(id: string): string {
     '<circle cx="24" cy="24" r="16"/><circle cx="24" cy="24" r="6"/><path d="M24 8 v10 M24 30 v10 M8 24 h10 M30 24 h10"/>',
   ][kind];
   return `<svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true">${body}</svg>`;
+}
+
+/** The Give ending's coda: the ring loosens and the surface blooms. */
+export function bloomCoda(): string {
+  let s = `<svg viewBox="0 0 300 300" aria-hidden="true">`;
+  s += `<circle cx="150" cy="170" r="96" fill="none" stroke="#ece3cf" stroke-width="10" stroke-dasharray="18 22" opacity=".35"/>`;
+  s += `<path d="M20,200 Q150,170 280,200" stroke="#ece3cf" stroke-width="1.5" fill="none" opacity=".6"/>`;
+  for (let i = 0; i < 11; i++) {
+    const x = 34 + i * 23;
+    const hgt = 30 + ((i * 37) % 50);
+    s += `<path d="M${x},${196 - (i % 3)} C${x - 6},${170} ${x + 6},${150} ${x},${196 - hgt}" stroke="#8fa63a" stroke-width="2" fill="none"/>`;
+    s += `<circle cx="${x}" cy="${196 - hgt}" r="${4 + (i % 3) * 2}" fill="${i % 4 === 0 ? "#d9a432" : "#ece3cf"}" opacity=".9"/>`;
+    s += `<path d="M${x},${178 - hgt / 3} q8,-6 12,-14 q-10,2 -12,14z" fill="#8fa63a" opacity=".8"/>`;
+  }
+  s += `</svg>`;
+  return s;
 }

@@ -67,6 +67,9 @@ export interface RunRecord {
   fights: number;
   devoured: number;
   seed: string;
+  ending?: "devour" | "give";
+  turn?: number;
+  daily?: string;
 }
 
 export interface Meta {
@@ -78,6 +81,13 @@ export interface Meta {
   history: RunRecord[];
   unlocked: string[];
   seenCards: string[];
+  /** Endings reached, per molt. */
+  endings: Record<string, Array<"devour" | "give">>;
+  /** Highest Turn unlocked (0 = none yet). */
+  maxTurn: number;
+  lastTurn: number;
+  /** Daily Descent results by date. */
+  daily: Record<string, { row: number; win: boolean }>;
 }
 
 export interface Settings {
@@ -92,6 +102,7 @@ export interface Settings {
   woundConfirm: "auto" | "on" | "off";
   intentDetail: boolean;
   grain: boolean;
+  tips: boolean;
 }
 
 export const defaultSettings: Settings = {
@@ -105,9 +116,11 @@ export const defaultSettings: Settings = {
   woundConfirm: "auto",
   intentDetail: false,
   grain: true,
+  tips: true,
 };
 
-const defaultMeta = (): Meta => ({ runs: 0, wins: 0, bestRow: 0, taught: [], history: [], unlocked: ["molt.venom"], seenCards: [] });
+// New fields get defaults here, so older meta saves load unchanged (rule 20).
+const defaultMeta = (): Meta => ({ runs: 0, wins: 0, bestRow: 0, taught: [], history: [], unlocked: ["molt.venom"], seenCards: [], endings: {}, maxTurn: 0, lastTurn: 0, daily: {} });
 
 export class Persistence {
   storage = new SafeStorage("spend-yourself");

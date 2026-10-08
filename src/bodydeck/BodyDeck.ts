@@ -23,6 +23,8 @@ export interface BodyCard {
   bound: boolean;
   /** Protected from eat (and bind) this turn. */
   guarded: boolean;
+  /** Can't be eaten for the rest of the fight (Ground). */
+  anchored?: boolean;
   /** Created this fight only (Reflection copies); never returns to the run deck. */
   temp?: boolean;
   /** Index into the run deck this instance came from. */
@@ -172,7 +174,7 @@ export function coilHeld(b: BodyState, amount = 1): BodyCard[] {
 export function eatTarget(b: BodyState): BodyCard | undefined {
   let best: BodyCard | undefined;
   for (const card of b.hand) {
-    if (card.guarded) continue;
+    if (card.guarded || card.anchored || card.id === "card.close_the_ring") continue;
     if (!best || card.coil > best.coil) best = card;
   }
   return best;

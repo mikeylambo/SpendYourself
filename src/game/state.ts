@@ -1,7 +1,7 @@
 import type { CombatState, DeckCard, Husk, MoltId } from "./types.ts";
 import type { StreamName } from "./rng.ts";
 
-export type NodeKind = "fight" | "elite" | "rest" | "event" | "shop" | "treasure" | "boss";
+export type NodeKind = "fight" | "elite" | "rest" | "event" | "shop" | "treasure" | "boss" | "finale";
 
 export interface MapNode {
   row: number;
@@ -31,7 +31,7 @@ export type Screen =
   | { kind: "rest"; done: boolean }
   | { kind: "treasure"; bone: string; taken: boolean }
   | { kind: "actEnd" }
-  | { kind: "over"; win: boolean; reason: string };
+  | { kind: "over"; win: boolean; reason: string; ending?: "devour" | "give" };
 
 export interface RunStats {
   fights: number;
@@ -75,4 +75,6 @@ export interface RunState {
   actHuskBonus: number;
   screen: Screen;
   startedAt: number;
+  /** Daily Descent date (YYYY-MM-DD) when this is the daily run. */
+  daily?: string;
 }

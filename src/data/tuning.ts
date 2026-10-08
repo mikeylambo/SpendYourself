@@ -3,8 +3,8 @@ export const tuning = {
   body: {
     startMaxHand: 7,
     openingDraw: 6,
-    /** Opening hand fills the body up to this many short of max hand (never below openingDraw). */
-    openingGap: 1,
+    /** Opening hand fills the body (max hand − 1) up to the Heavy size, then grows +1 per this many max hand. */
+    openingGrowth: 2,
     drawPerTurn: 3,
     heavyAt: 12,
     bigAt: 9,

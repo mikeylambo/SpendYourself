@@ -1,14 +1,16 @@
 import { isBig, might } from "../bodydeck/BodyDeck.ts";
-import { BONES } from "../data/bones.ts";
-import { CARDS } from "../data/cards.ts";
+import { BONE_LIST, BONES } from "../data/bones.ts";
+import { CARD_LIST, CARDS } from "../data/cards.ts";
+import { asc, TURNS } from "../data/turns.ts";
+import { glossaryFor, HOW_TO_PLAY, intentWords, TIPS } from "./guide.ts";
 import { EVENTS } from "../data/events.ts";
 import { FOES } from "../data/foes.ts";
 import { tuning } from "../data/tuning.ts";
 import type { Combat } from "../game/combat.ts";
 import { LAST_ACT, newRun, RunController, type RunAgent } from "../game/run.ts";
 import type { MapNode, RunState } from "../game/state.ts";
-import type { Act, FoeState, GameEvent, PickRequest, Presenter } from "../game/types.ts";
-import { boneGlyph, creatureSVG, icon, ringGlyph, SVG_DEFS, uroRing } from "./art.ts";
+import type { Act, FoeState, GameEvent, MoltId, PickRequest, Presenter } from "../game/types.ts";
+import { bloomCoda, boneGlyph, creatureSVG, icon, ringGlyph, SVG_DEFS, uroRing } from "./art.ts";
 import { AudioEngine } from "./audio.ts";
 import { breakdownHTML, cardHTML, escapeHtml, previewCombat, staticCardHTML } from "./cardView.ts";
 import { focusFirst, navMove, SemanticInput, type Action } from "./input.ts";
@@ -29,6 +31,15 @@ const PROMPTS: Record<string, string> = {
   duplicate: "Duplicate a card",
   give: "Give a card",
 };
+const MOLTS: MoltId[] = ["venom", "tide", "storm"];
+const MOLT_INFO: Record<MoltId, { name: string; play: string; passive: string; unlock: string }> = {
+  venom: { name: "Venom", play: "Poison, devour, grow huge", passive: "Hunger: poisoned kills leave twin husks.", unlock: "" },
+  tide: { name: "Tide", play: "Block, draw, thrive small", passive: "Undertow: at 3 cards or fewer, draw 1 more and wounds can't take your last card.", unlock: "Reach the Roots" },
+  storm: { name: "Storm", play: "Hoard coil, one huge strike", passive: "Charge: coil caps at 5; two cards start each fight coiled.", unlock: "Defeat the Drowned Mouth" },
+};
+const freshSeed = () => Math.random().toString(36).slice(2, 10).toUpperCase();
+const dailyDate = () => new Date().toISOString().slice(0, 10);
+const hashDay = (d: string) => [...d].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7);
 const DEATH: Record<string, string> = { torn: "Torn apart", spent: "Spent", worn: "Worn to nothing" };
 const NODE_ICON: Record<string, string> = { fight: "claw", elite: "elite", rest: "rest_node", event: "event", shop: "shop", treasure: "treasure", boss: "boss" };
 
@@ -156,31 +167,168 @@ export class App implements RunAgent, Presenter {
   async showTitle(): Promise<void> {
     this.view = "title";
     this.audio.stopMusic();
+    const meta = this.persist.meta;
     const saved = await this.persist.loadRun();
+    const live = saved && saved.screen.kind !== "over" ? saved : null;
+    const today = dailyDate();
+    const dailyOpen = meta.runs >= 3;
+    const allSix = MOLTS.every((m) => (meta.endings[m] ?? []).length >= 2);
     const el = h(`<section class="screen dark title">
-      <div class="title-ring">${uroRing(900, ACCENT.venom, 34)}</div>
+      <div class="title-ring">${uroRing(900, allSix ? "#d9a432" : ACCENT.venom, 34)}</div>
       <div class="title-wrap">
         <h1 class="wordmark title-xl">SPEND<br>Y${ringGlyph()}URSELF</h1>
         <div class="menu">
-          ${saved && saved.screen.kind !== "over" ? `<button class="btn solid" data-nav data-autofocus data-act="continue">Continue<span class="sub">${ACT_NAMES[saved.act]} · ${saved.row + 1}</span></button>` : ""}
-          <button class="btn ${saved ? "" : "solid"}" data-nav ${saved ? "" : "data-autofocus"} data-act="begin">Begin</button>
+          ${live ? `<button class="btn solid" data-nav data-autofocus data-act="continue">Continue<span class="sub">${live.daily ? "Daily · " : ""}${ACT_NAMES[live.act]} · ${live.row + 1}</span></button>` : ""}
+          <button class="btn ${live ? "" : "solid"}" data-nav ${live ? "" : "data-autofocus"} data-act="begin">${meta.runs ? "Descend" : "Begin"}</button>
+          ${dailyOpen ? `<button class="btn" data-nav data-act="daily">Daily Descent<span class="sub">${meta.daily[today] ? `Today: ${meta.daily[today]!.win ? "won" : `reached ${meta.daily[today]!.row}`}` : today}</span></button>` : ""}
+          <button class="btn ghost" data-nav data-act="how">How to play</button>
+          ${meta.runs ? `<button class="btn ghost" data-nav data-act="library">Library &amp; history</button>` : ""}
           <button class="btn ghost" data-nav data-act="settings">Settings</button>
         </div>
       </div>
     </section>`);
-    el.querySelector('[data-act="continue"]')?.addEventListener("click", () => saved && this.startRun(saved));
+    const fresh = async () => { if (live) await this.persist.clearRun(); };
+    el.querySelector('[data-act="continue"]')?.addEventListener("click", () => live && this.startRun(live));
     el.querySelector('[data-act="begin"]')!.addEventListener("click", async () => {
       this.ui();
-      if (saved && saved.screen.kind !== "over") await this.persist.clearRun();
-      const seed = Math.random().toString(36).slice(2, 10).toUpperCase();
-      this.startRun(newRun({ seed, molt: "venom", onboarding: this.persist.meta.runs === 0 }));
+      if (live && !(await this.confirmAbandon(el))) return;
+      await fresh();
+      if (meta.runs === 0) return this.showHowTo(() => this.startRun(newRun({ seed: freshSeed(), molt: "venom", onboarding: true })));
+      if (this.unlockedMolts().length > 1 || meta.wins > 0) return this.showMoltPicker();
+      this.startRun(newRun({ seed: freshSeed(), molt: "venom", onboarding: false }));
     });
+    el.querySelector('[data-act="daily"]')?.addEventListener("click", async () => {
+      this.ui();
+      if (live && !(await this.confirmAbandon(el))) return;
+      await fresh();
+      const molt = MOLTS[hashDay(today) % MOLTS.length]!;
+      this.startRun(newRun({ seed: `DAILY-${today}`, molt, onboarding: false, daily: today }));
+    });
+    el.querySelector('[data-act="how"]')!.addEventListener("click", () => { this.ui(); this.showHowTo(() => this.showTitle()); });
+    el.querySelector('[data-act="library"]')?.addEventListener("click", () => { this.ui(); this.showLibrary(); });
     el.querySelector('[data-act="settings"]')!.addEventListener("click", () => { this.ui(); this.showSettings(() => this.showTitle()); });
+    this.setScreen(el);
+  }
+
+  /** Starting over a saved run asks once, in place. */
+  private confirmAbandon(el: HTMLElement): Promise<boolean> {
+    return new Promise((resolve) => {
+      const b = el.querySelector<HTMLButtonElement>('[data-act="begin"]')!;
+      if (b.dataset.sure === "1") return resolve(true);
+      b.dataset.sure = "1";
+      b.innerHTML = `Abandon saved run?<span class="sub">Press again to start over</span>`;
+      resolve(false);
+    });
+  }
+
+  unlockedMolts(): MoltId[] {
+    return MOLTS.filter((m) => this.persist.meta.unlocked.includes(`molt.${m}`));
+  }
+
+  showMoltPicker(): void {
+    const meta = this.persist.meta;
+    let turn = Math.min(meta.maxTurn, meta.lastTurn ?? 0);
+    const draw = () => {
+      const el = h(`<section class="screen dark"><div class="plate-screen">
+        <h1>Molt</h1>
+        <div class="molts">${MOLTS.map((m) => {
+          const open = meta.unlocked.includes(`molt.${m}`);
+          const ends = meta.endings[m] ?? [];
+          return `<button class="molt-plate" data-nav data-m="${m}" ${open ? "" : "disabled"} style="--acc:${ACCENT[m]}">
+            <div class="molt-ring">${uroRing(150, ACCENT[m]!, 18, open ? 18 : 6)}</div>
+            <b>${MOLT_INFO[m]!.name}</b>
+            <span>${open ? MOLT_INFO[m]!.play : `${icon("lock")} ${MOLT_INFO[m]!.unlock}`}</span>
+            ${open ? `<em>${escapeHtml(MOLT_INFO[m]!.passive)}</em>` : ""}
+            ${ends.length ? `<small>${ends.map((e) => (e === "give" ? "Give" : "Devour")).join(" · ")}</small>` : ""}
+          </button>`;
+        }).join("")}</div>
+        ${meta.maxTurn > 0 ? `<div class="turns"><button class="btn" data-nav data-t="-1" ${turn <= 0 ? "disabled" : ""}>−</button><div><b>Turn ${turn}</b><span>${turn ? escapeHtml(TURNS[turn] ?? "") : "No extra pressure"}</span></div><button class="btn" data-nav data-t="1" ${turn >= meta.maxTurn ? "disabled" : ""}>+</button></div>` : ""}
+        <button class="btn ghost" data-nav data-back>${icon("back")}</button>
+      </div></section>`);
+      el.querySelectorAll<HTMLElement>("[data-m]").forEach((b) =>
+        b.addEventListener("click", () => {
+          this.ui();
+          meta.lastTurn = turn;
+          void this.persist.saveMeta();
+          this.startRun(newRun({ seed: freshSeed(), molt: b.dataset.m as MoltId, onboarding: false, ascension: turn }));
+        }),
+      );
+      el.querySelectorAll<HTMLElement>("[data-t]").forEach((b) =>
+        b.addEventListener("click", () => { turn = Math.max(0, Math.min(meta.maxTurn, turn + Number(b.dataset.t))); this.ui(); draw(); }),
+      );
+      el.querySelector("[data-back]")!.addEventListener("click", () => void this.showTitle());
+      this.view = "settings";
+      this.settingsBack = () => void this.showTitle();
+      this.setScreen(el);
+    };
+    draw();
+  }
+
+  showHowTo(done: () => void): void {
+    let i = 0;
+    const draw = () => {
+      const p = HOW_TO_PLAY[i]!;
+      const last = i === HOW_TO_PLAY.length - 1;
+      const el = h(`<section class="screen dark"><div class="plate-screen howto">
+        <div class="howto-art">${p.art}</div>
+        <h1>${escapeHtml(p.title)}</h1>
+        <div class="howto-lines">${p.lines.map((l) => `<p>${escapeHtml(l)}</p>`).join("")}</div>
+        <div class="howto-dots">${HOW_TO_PLAY.map((_, k) => `<i class="${k === i ? "on" : ""}"></i>`).join("")}</div>
+        <div class="row">
+          ${i > 0 ? `<button class="btn ghost" data-nav data-prev>${icon("back")}</button>` : ""}
+          <button class="btn solid" data-nav data-autofocus data-next>${last ? "Descend" : "Next"}</button>
+          ${last ? "" : `<button class="btn ghost" data-nav data-skip>Skip</button>`}
+        </div>
+      </div></section>`);
+      el.querySelector("[data-next]")!.addEventListener("click", () => { this.ui(); if (last) done(); else { i++; draw(); } });
+      el.querySelector("[data-prev]")?.addEventListener("click", () => { i--; draw(); });
+      el.querySelector("[data-skip]")?.addEventListener("click", () => done());
+      this.view = "settings";
+      this.settingsBack = () => (i > 0 ? (i--, draw()) : done());
+      this.setScreen(el);
+    };
+    draw();
+  }
+
+  showLibrary(tab: "history" | "cards" | "bones" = "history"): void {
+    const meta = this.persist.meta;
+    const seen = new Set(meta.seenCards);
+    const probe = previewCombat(newRun({ seed: "LIB", molt: "venom", onboarding: false }));
+    let body = "";
+    if (tab === "history") {
+      const ends = MOLTS.map((m) => `<span style="color:${ACCENT[m]}">${MOLT_INFO[m]!.name}</span> ${(meta.endings[m] ?? []).map((e) => (e === "give" ? "Give" : "Devour")).join(" · ") || "—"}`).join("<br>");
+      body = `<dl class="statlist"><dt>Runs</dt><dd>${meta.runs}</dd><dt>Wins</dt><dd>${meta.wins}</dd><dt>Deepest</dt><dd>${meta.bestRow}</dd><dt>Highest Turn</dt><dd>${meta.maxTurn}</dd></dl>
+        <p class="lines" style="font-style:normal">${ends}</p>
+        <div class="history">${meta.history.map((r) => `<div class="hist-row"><span style="color:${ACCENT[r.molt] ?? "inherit"}">${escapeHtml(MOLT_INFO[r.molt as MoltId]?.name ?? r.molt)}</span><span>${r.win ? (r.ending === "give" ? "Gave" : "Devoured") : escapeHtml(DEATH[r.reason] ?? r.reason)}</span><span>${escapeHtml(ACT_NAMES[r.act] ?? "")} · ${r.row}</span><span>${icon("scale")}${r.maxHand}</span><span>${new Date(r.at).toLocaleDateString()}</span></div>`).join("") || "<p>No runs yet.</p>"}</div>`;
+    } else if (tab === "cards") {
+      const groups: Array<[string, typeof CARD_LIST]> = [["Shared", CARD_LIST.filter((c) => !c.molt && !c.special)], ...MOLTS.map((m) => [MOLT_INFO[m]!.name, CARD_LIST.filter((c) => c.molt === m)] as [string, typeof CARD_LIST])];
+      body = groups.map(([name, cards]) => `<h2>${name} <small>${cards.filter((c) => seen.has(c.id)).length}/${cards.length}</small></h2><div class="grid-cards">${cards.map((c) => (seen.has(c.id) ? staticCardHTML(c.id, false, probe, {}) : `<div class="card unseen" data-type="${c.type}"><span>?</span></div>`)).join("")}</div>`).join("");
+    } else {
+      body = `<div class="shop-grid">${BONE_LIST.map((b) => `<div class="bone-ware">${boneGlyph(b.id)}<b>${escapeHtml(b.name)}</b><span>${escapeHtml(b.text)}</span></div>`).join("")}</div>`;
+    }
+    const el = h(`<section class="screen dark"><div class="plate-screen">
+      <div class="tabs">${(["history", "cards", "bones"] as const).map((t) => `<button class="btn ${t === tab ? "solid" : "ghost"}" data-nav data-tab="${t}" ${t === tab ? "data-autofocus" : ""}>${t === "history" ? "History" : t === "cards" ? "Cards" : "Bones"}</button>`).join("")}</div>
+      ${body}
+      <button class="btn ghost" data-nav data-back>${icon("back")}</button>
+    </div></section>`);
+    el.querySelectorAll<HTMLElement>("[data-tab]").forEach((b) => b.addEventListener("click", () => this.showLibrary(b.dataset.tab as "history" | "cards" | "bones")));
+    el.querySelector("[data-back]")!.addEventListener("click", () => void this.showTitle());
+    this.view = "settings";
+    this.settingsBack = () => void this.showTitle();
     this.setScreen(el);
   }
 
   private ui(): void {
     this.audio.play("ui.confirm");
+  }
+
+  /** Dev only (?dev=1): start a run at the given act's end plate, with a grown body. */
+  devJump(act: number, molt: MoltId = "venom"): void {
+    const run = newRun({ seed: freshSeed(), molt, onboarding: false });
+    run.act = act - 1;
+    run.maxHand = 7 + act * 3;
+    run.screen = { kind: "actEnd" };
+    this.startRun(run);
   }
 
   startRun(run: RunState): void {
@@ -213,7 +361,7 @@ export class App implements RunAgent, Presenter {
       case "shop": return this.renderShop();
       case "event": return this.renderEvent();
       case "treasure": return this.renderTreasure();
-      case "actEnd": return this.renderMap();
+      case "actEnd": return this.renderActEnd();
       case "over": return this.renderOver();
     }
   }
@@ -320,6 +468,8 @@ export class App implements RunAgent, Presenter {
       });
     });
     this.setScreen(el);
+    this.tip("map");
+    this.markSeen(run.deck.map((d) => d.id));
     const view = el.querySelector<HTMLElement>(".mapview")!;
     const targetY = 50 + Math.max(0, run.row) * rowH - view.clientHeight / 2 + 120;
     requestAnimationFrame(() => {
@@ -352,11 +502,8 @@ export class App implements RunAgent, Presenter {
       el.querySelector("[data-end]")!.addEventListener("click", () => void this.endTurn());
       this.setScreen(el, false);
       this.fightEl = el;
-      if (run.onboarding && run.fightIndex === 0 && c.s.turn === 1 && !this.persist.taught("play-fang")) this.prompt("Play Fang");
-      if (run.onboarding && run.fightIndex === 1 && !this.persist.taught("might")) {
-        this.persist.teach("might");
-        this.prompt("Bigger hand, bigger hit");
-      }
+      this.tip("hand");
+      this.tip("play");
     }
     this.updateFight();
   }
@@ -393,11 +540,9 @@ export class App implements RunAgent, Presenter {
       (s.selfPoison ? `<span class="plate pz">${icon("drop")}${s.selfPoison}</span>` : "");
     el.querySelector(".core .right")!.innerHTML = `<button class="pile" data-pile="draw" title="Draw pile">${icon("draw")}${b.draw.length}</button><button class="pile" data-pile="discard" title="Discard pile">${icon("discard")}${b.discard.length}</button><span class="pile" title="Max hand">${icon("scale")}${b.hand.length}/${b.maxHand}</span>`;
     el.querySelectorAll<HTMLElement>("[data-pile]").forEach((p) => p.addEventListener("click", () => this.showPile(p.dataset.pile as "draw" | "discard")));
-    if (big && !this.persist.taught("big")) {
-      this.persist.teach("big");
-      this.toast("Big: easier to hit");
-      this.audio.play("size.big");
-    }
+    if (big && !this.persist.taught("tip.big")) this.audio.play("size.big");
+    if (big) this.tip("big");
+    this.contextTips(c);
     // hand
     this.renderHand(el, c);
     // actions / banner
@@ -414,7 +559,7 @@ export class App implements RunAgent, Presenter {
           const hits = c.attackHits(f, a.x ?? 1);
           const v = c.attackValue(f, a.n);
           const bigPlus = c.bigActive() ? `<span class="plus">+1</span>` : "";
-          return `<span class="act" title="Wounds">${icon(hits > 1 ? "elite" : "claw")}${v}${hits > 1 ? `×${hits}` : ""}${bigPlus}</span>`;
+          return `<span class="act" title="Wounds">${icon(hits > 1 ? "elite" : "claw")}${v}${hits > 1 ? `×${asc(this.run?.ascension ?? 0, 3) ? "?" : hits}` : ""}${bigPlus}</span>`;
         }
         case "eat": return `<span class="act" title="Eats your highest-coil card">${icon("maw")}${(a.x ?? 1) > 1 ? `×${a.x}` : ""}</span>`;
         case "bind": return `<span class="act" title="Binds a card">${icon("knot")}${(a.x ?? 1) > 1 ? `×${a.x}` : ""}</span>`;
@@ -424,6 +569,10 @@ export class App implements RunAgent, Presenter {
         case "summon": return `<span class="act" title="Summons">${icon("egg")}${a.x}</span>`;
         case "heal": return `<span class="act" title="Heals">${icon("heal")}${a.n}</span>`;
         case "daze": return `<span class="act" title="Dazes you: draw 1 less">${icon("daze")}</span>`;
+        case "thorns": return `<span class="act" title="Bristles: hitting it costs you a wound">${icon("thorns")}</span>`;
+        case "siren": return `<span class="act" title="Your next strike hits you">${icon("eye")}</span>`;
+        case "slime": return `<span class="act" title="Your next card costs Sacrifice 1">${icon("sacrifice")}</span>`;
+        case "swallow": return `<span class="act" title="Swallows a card from your draw pile">${icon("maw")}${icon("draw")}</span>`;
         default: return `<span class="act" title="Resting">${icon("rest")}</span>`;
       }
     });
@@ -452,10 +601,13 @@ export class App implements RunAgent, Presenter {
         </button>`);
         n.addEventListener("click", () => this.tapFoe(f.uid));
         let timer = 0;
-        n.addEventListener("pointerdown", () => { timer = window.setTimeout(() => n!.classList.add("show-name"), 420); });
-        const clear = () => { clearTimeout(timer); setTimeout(() => n!.classList.remove("show-name"), 900); };
+        let held = false;
+        n.addEventListener("pointerdown", () => { held = false; timer = window.setTimeout(() => { held = true; this.inspectFoe(f.uid); }, 450); });
+        const clear = () => clearTimeout(timer);
         n.addEventListener("pointerup", clear);
         n.addEventListener("pointerleave", clear);
+        n.addEventListener("contextmenu", (e) => { e.preventDefault(); this.inspectFoe(f.uid); });
+        n.addEventListener("click", (e) => { if (held) e.stopImmediatePropagation(); }, { capture: true });
         const idx = shown.indexOf(f);
         const after = wrap.children[idx] ?? null;
         wrap.insertBefore(n, after);
@@ -604,9 +756,9 @@ export class App implements RunAgent, Presenter {
     if (!p || !p.req.cards.some((x) => c.body.hand.includes(x))) return;
     const n = p.req.count;
     const text = p.req.kind === "wound" ? `Choose ${n} to lose` : p.req.kind === "sacrifice" ? `Sacrifice ${n}` : PROMPTS[p.req.prompt] ?? "Choose";
-    const needConfirm = this.needConfirm() && p.req.kind !== "choose";
-    const ready = p.selected.length === n;
-    const banner = h(`<div class="banner ${p.req.kind === "choose" ? "" : "wound"}">${p.req.kind === "choose" ? "" : icon(p.req.kind === "wound" ? "claw" : "sacrifice")}<span>${text}${p.selected.length && n > 1 ? ` · ${p.selected.length}/${n}` : ""}</span>${needConfirm && ready ? `<button class="btn" data-confirm>${icon("check")}</button>` : ""}</div>`);
+    const needConfirm = (this.needConfirm() && p.req.kind !== "choose") || !!p.req.optional;
+    const ready = p.selected.length === n || !!p.req.optional;
+    const banner = h(`<div class="banner ${p.req.kind === "choose" ? "" : "wound"}">${p.req.kind === "choose" ? "" : icon(p.req.kind === "wound" ? "claw" : "sacrifice")}<span>${text}${p.selected.length && n > 1 && !p.req.optional ? ` · ${p.selected.length}/${n}` : ""}</span>${needConfirm && ready ? `<button class="btn" data-confirm>${icon("check")}</button>` : ""}</div>`);
     banner.querySelector("[data-confirm]")?.addEventListener("click", () => this.resolvePick());
     zone.appendChild(banner);
   }
@@ -727,7 +879,7 @@ export class App implements RunAgent, Presenter {
     const card = [...c.body.hand, ...c.body.discard, ...c.body.draw].find((x) => x.uid === uid);
     if (!card) return;
     const inHand = c.body.hand.includes(card);
-    const el = h(`<div class="overlay"><div class="inspect">${cardHTML(card, c, { inHand })}<div class="math">${breakdownHTML(card, c, inHand)}</div></div><button class="btn" data-nav data-autofocus data-close>${icon("back")}</button></div>`);
+    const el = h(`<div class="overlay"><div class="inspect">${cardHTML(card, c, { inHand })}<div class="math">${breakdownHTML(card, c, inHand)}${this.glossaryHTML(CARDS[card.id]!.t(c.values(CARDS[card.id]!, c.ctx(card, inHand)), c.ctx(card, inHand)) + " " + CARDS[card.id]!.f)}</div></div><button class="btn" data-nav data-autofocus data-close>${icon("back")}</button></div>`);
     const close = () => this.closeOverlay();
     el.addEventListener("click", close);
     this.openOverlay(el, close);
@@ -880,10 +1032,25 @@ export class App implements RunAgent, Presenter {
         this.updateFight();
         return;
       case "scar.gain":
-        if (!this.persist.taught("scars")) {
-          this.persist.teach("scars");
-          setTimeout(() => this.toast("Scars shrink you"), 400);
-        }
+        setTimeout(() => this.tip("scars"), 500);
+        return;
+      case "ring.offer":
+        this.updateFight();
+        this.coach("The Tail is down to its last card. Finish it, or play Close the Ring.", true);
+        return wait(this.ms(500));
+      case "pressure":
+        this.toast("Pressure: max hand −2");
+        this.updateFight();
+        return wait(this.ms(300));
+      case "siren":
+      case "slime":
+      case "swallow.card":
+      case "siren.turn":
+        this.updateFight();
+        return wait(this.ms(220));
+      case "act.enter":
+        this.audio.stopMusic();
+        this.audio.startMusic(ev.act as number);
         return;
       case "bone.trigger":
         this.toast(BONES[ev.id as string]?.name ?? "");
@@ -924,6 +1091,82 @@ export class App implements RunAgent, Presenter {
     this.root.querySelector("[data-prompt]")?.remove();
   }
 
+  /** A one-time tip (first run teaching). */
+  tip(key: string): void {
+    if (!this.s.tips || this.persist.taught(`tip.${key}`) || !TIPS[key]) return;
+    if (this.root.querySelector(".coach")) {
+      if (!this.tipQueue.includes(key)) this.tipQueue.push(key);
+      return;
+    }
+    this.persist.teach(`tip.${key}`);
+    this.coach(TIPS[key]!);
+  }
+  private tipQueue: string[] = [];
+
+  coach(text: string, always = false): void {
+    if (!always && !this.s.tips) return;
+    this.root.querySelector(".coach")?.remove();
+    const el = h(`<button class="coach" aria-live="polite"><span>${escapeHtml(text)}</span><b>${icon("check")}</b></button>`);
+    const close = () => {
+      el.remove();
+      const next = this.tipQueue.shift();
+      if (next) setTimeout(() => this.tip(next), 150);
+    };
+    el.addEventListener("click", close);
+    this.root.appendChild(el);
+    setTimeout(() => { if (el.isConnected) close(); }, 9000);
+  }
+
+  /** Tips that fire when the board first shows the thing they explain. */
+  private contextTips(c: Combat): void {
+    if (!this.s.tips) return;
+    const b = c.body;
+    if (c.s.playedThisTurn >= 1) this.tip("might");
+    if (c.s.turn === 1 && (c.s.playedThisTurn >= 2 || b.hand.length <= 4)) this.tip("end");
+    if (b.hand.some((x) => x.coil > 0)) this.tip("coil");
+    if (c.s.turn >= 2 && b.hand.some((x) => CARDS[x.id]!.type === "guard")) this.tip("block");
+    const acts = c.alive().flatMap((f) => f.intent.map((a) => a.k));
+    if (acts.includes("eat")) this.tip("eat");
+    if (b.hand.some((x) => x.bound)) this.tip("bind");
+    if (c.alive().some((f) => f.poison > 0)) this.tip("poison");
+  }
+
+  private glossaryHTML(text: string): string {
+    const g = glossaryFor(text);
+    return g.length ? `<dl class="gloss">${g.map(([w, d]) => `<dt>${escapeHtml(w)}</dt><dd>${escapeHtml(d)}</dd>`).join("")}</dl>` : "";
+  }
+
+  private inspectFoe(uid: number): void {
+    const c = this.combat;
+    const f = c?.s.foes.find((x) => x.uid === uid);
+    if (!c || !f) return;
+    const def = FOES[f.id]!;
+    const words = (acts: Act[]) => acts.map((a) => {
+      const n = a.k === "atk" ? c.attackValue(f, a.n) : "n" in a ? a.n : undefined;
+      const x = a.k === "atk" ? c.attackHits(f, a.x ?? 1) : "x" in a ? a.x : undefined;
+      return intentWords(a.k, n, x);
+    }).join(", ");
+    const lens = c.has("bone.lens") || this.s.intentDetail || f.revealed > 0;
+    const status = [
+      f.block ? `Block ${f.block}` : "",
+      f.poison ? `Poison ${f.poison}${f.slowRot ? " (not fading)" : ""}` : "",
+      f.weak ? `Weakened ${f.weak}` : "",
+      f.str ? `Strength +${f.str}` : "",
+      f.thorns ? "Bristling" : "",
+    ].filter(Boolean).join(" · ");
+    const el = h(`<div class="overlay"><div class="inspect foe-inspect">
+      <div class="foe-plate">${creatureSVG(f.id)}</div>
+      <div class="math"><h2>${escapeHtml(def.name)}</h2>
+        <p>${Math.max(0, f.hp)} / ${f.max} health${status ? ` · ${escapeHtml(status)}` : ""}</p>
+        <p><b>Next:</b> ${escapeHtml(f.skip ? "Skips its move" : words(f.intent))}</p>
+        ${lens ? `<p><b>Then:</b> ${escapeHtml(words(c.peekIntent(f)))}</p>` : ""}
+        ${def.onDeath === "wasp" ? "<p>When one dies, the rest grow stronger.</p>" : def.onDeath === "split" ? "<p>Splits in two when it dies.</p>" : def.onDeath === "choir" ? "<p>Killing a head makes the others stronger.</p>" : ""}
+        ${f.id === "boss.tail" ? "<p>It plays a copy of your deck.</p>" : ""}
+      </div></div><button class="btn" data-nav data-autofocus data-close>${icon("back")}</button></div>`);
+    el.addEventListener("click", () => this.closeOverlay());
+    this.openOverlay(el, () => this.closeOverlay());
+  }
+
   toast(text: string): void {
     const t = h(`<div class="toast">${escapeHtml(text)}</div>`);
     this.root.appendChild(t);
@@ -945,6 +1188,8 @@ export class App implements RunAgent, Presenter {
     if (sc.kind !== "reward") return;
     const e = previewCombat(run);
     const first = !this.persist.taught("devour");
+    this.tip("devour");
+    this.markSeen(sc.husks.map((x) => x.id));
     const el = this.plate(`
       <div class="loot"><span>${icon("glint")}+${sc.glint}</span>${sc.bone ? `<span>${boneGlyph(sc.bone).replace("<svg", '<svg style="width:22px;height:22px"')}${escapeHtml(BONES[sc.bone]?.name ?? "")}</span>` : ""}</div>
       <h1>${first ? "Devour one" : "Devour"}</h1>
@@ -1002,6 +1247,7 @@ export class App implements RunAgent, Presenter {
     const e = previewCombat(run);
     const st = sc.stock;
     const price = (p: number) => `<span class="price">${icon("glint")}${p}</span>`;
+    this.markSeen(st.cards.map((w) => w.id));
     const el = this.plate(`
       <h1>The Burrower</h1>
       <div class="shop-grid">
@@ -1085,10 +1331,61 @@ export class App implements RunAgent, Presenter {
     meta.runs++;
     if (sc.win) meta.wins++;
     meta.bestRow = Math.max(meta.bestRow, run.row + 1 + (run.act - 1) * 16);
-    meta.history.unshift({ at: Date.now(), molt: run.molt, win: sc.win, reason: sc.reason, row: run.row + 1, act: run.act, maxHand: run.maxHand - run.scars, fights: run.stats.fights, devoured: run.stats.devoured.length, seed: run.seed });
+    meta.history.unshift({ at: Date.now(), molt: run.molt, win: sc.win, reason: sc.reason, row: run.row + 1, act: run.act, maxHand: run.maxHand - run.scars, fights: run.stats.fights, devoured: run.stats.devoured.length, seed: run.seed, ...(sc.ending ? { ending: sc.ending } : {}), turn: run.ascension, ...(run.daily ? { daily: run.daily } : {}) });
+    if (sc.win && sc.ending) {
+      const list = (meta.endings[run.molt] ??= []);
+      if (!list.includes(sc.ending)) list.push(sc.ending);
+      meta.maxTurn = Math.min(20, Math.max(meta.maxTurn, run.ascension + 1));
+    }
+    this.unlock(run);
+    if (run.daily) {
+      const prev = meta.daily[run.daily];
+      const row = run.row + 1 + (run.act - 1) * 16;
+      if (!prev || (sc.win && !prev.win) || (!prev.win && row > prev.row)) meta.daily[run.daily] = { row, win: sc.win };
+    }
     meta.history = meta.history.slice(0, 50);
     await this.persist.saveMeta();
     await this.persist.clearRun();
+  }
+
+  private renderActEnd(): void {
+    const ctl = this.ctl!;
+    const run = ctl.run;
+    const finale = run.act >= LAST_ACT;
+    const next = finale ? "The Tail" : ACT_NAMES[run.act + 1]!;
+    this.unlock(run);
+    const el = h(`<section class="screen dark"><div class="plate-screen act-plate">
+      <div style="width:min(320px,72vw)">${uroRing(320, ACCENT[run.molt]!, 30, Math.min(30, run.maxHand - run.scars))}</div>
+      <p class="label">${finale ? "The bottom of the Deep" : `Act ${run.act + 1}`}</p>
+      <h1>${escapeHtml(next)}</h1>
+      <button class="btn solid" data-nav data-autofocus data-go>Descend</button>
+    </div></section>`);
+    el.querySelector("[data-go]")!.addEventListener("click", async () => {
+      this.ui();
+      await ctl.descend();
+      await this.after();
+    });
+    this.setScreen(el);
+  }
+
+  /** Molt and mode unlocks (slifer-onboarding.md §6). */
+  private unlock(run: RunState): void {
+    const meta = this.persist.meta;
+    const add = (id: string, msg: string) => {
+      if (meta.unlocked.includes(id)) return;
+      meta.unlocked.push(id);
+      setTimeout(() => this.toast(msg), 600);
+    };
+    if (run.act >= 2) add("molt.tide", "Tide molt unlocked");
+    if (run.act >= 3 && run.screen.kind === "actEnd") add("molt.storm", "Storm molt unlocked");
+    void this.persist.saveMeta();
+  }
+
+  markSeen(ids: string[]): void {
+    const seen = this.persist.meta.seenCards;
+    let changed = false;
+    for (const id of ids) if (!seen.includes(id)) { seen.push(id); changed = true; }
+    if (changed) void this.persist.saveMeta();
   }
 
   private renderOver(): void {
@@ -1098,12 +1395,13 @@ export class App implements RunAgent, Presenter {
     this.audio.stopMusic();
     const st = run.stats;
     const eff = Math.max(0, run.maxHand - run.scars);
-    const title = sc.win ? (run.act >= LAST_ACT ? "Topsoil devoured" : "Descend") : DEATH[sc.reason] ?? "Spent";
+    const title = sc.win ? (sc.ending === "give" ? "Released" : "The ring closes") : DEATH[sc.reason] ?? "Spent";
+    const coda = sc.win ? (sc.ending === "give" ? bloomCoda() : uroRing(300, "#d9a432", 40, 40)) : uroRing(300, ACCENT[run.molt], Math.max(24, eff), eff);
     const el = h(`<section class="screen dark results"><div class="plate-screen">
-      <div class="result-body" style="width:min(300px,72vw)">${uroRing(300, ACCENT[run.molt], Math.max(24, eff), eff)}</div>
+      <div class="result-body" style="width:min(300px,72vw)">${coda}</div>
       <h1>${escapeHtml(title)}</h1>
       <dl class="statlist">
-        <dt>Reached</dt><dd>${escapeHtml(ACT_NAMES[run.act] ?? "")} · ${run.row + 1}</dd>
+        <dt>Reached</dt><dd>${sc.reason === "ring" || run.screen.kind === "over" && run.row < 0 && run.act >= 3 ? "The Tail" : `${escapeHtml(ACT_NAMES[run.act] ?? "")} · ${run.row + 1}`}</dd>
         ${!sc.win && st.diedTo ? `<dt>Taken by</dt><dd>${escapeHtml(FOES[st.diedTo]?.name ?? "")}</dd>` : ""}
         <dt>Max hand</dt><dd>${eff}${run.scars ? ` (−${run.scars})` : ""}</dd>
         <dt>Devoured</dt><dd>${st.devoured.length}</dd>
@@ -1116,7 +1414,7 @@ export class App implements RunAgent, Presenter {
     el.querySelector("[data-again]")!.addEventListener("click", () => {
       this.ui();
       const seed = Math.random().toString(36).slice(2, 10).toUpperCase();
-      this.startRun(newRun({ seed, molt: run.molt, onboarding: false }));
+      this.startRun(newRun({ seed, molt: run.molt, onboarding: false, ascension: run.daily ? 0 : run.ascension }));
     });
     el.querySelector("[data-title]")!.addEventListener("click", () => { this.ctl = null; void this.showTitle(); });
     this.setScreen(el);
@@ -1174,6 +1472,8 @@ export class App implements RunAgent, Presenter {
       row("reducedMotion", "Reduced motion", s.reducedMotion ? "On" : "Off"),
       row("highContrast", "High-contrast ink", s.highContrast ? "On" : "Off"),
       row("grain", "Paper grain", s.grain ? "On" : "Off"),
+      row("tips", "Tips", s.tips ? "On" : "Off"),
+      row("resetTips", "Show tips again", ""),
       row("fullscreen", "Fullscreen", document.fullscreenElement ? "On" : "Off"),
     ].join("");
   }
@@ -1191,6 +1491,12 @@ export class App implements RunAgent, Presenter {
       case "reducedMotion": s.reducedMotion = !s.reducedMotion; break;
       case "highContrast": s.highContrast = !s.highContrast; break;
       case "grain": s.grain = !s.grain; break;
+      case "tips": s.tips = !s.tips; break;
+      case "resetTips":
+        this.persist.meta.taught = this.persist.meta.taught.filter((t) => !t.startsWith("tip."));
+        s.tips = true;
+        await this.persist.saveMeta();
+        break;
       case "fullscreen":
         try {
           if (document.fullscreenElement) await document.exitFullscreen();

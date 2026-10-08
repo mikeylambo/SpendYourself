@@ -80,7 +80,8 @@ export class Bot implements RunAgent {
       }
       return cards.slice(0, req.count).map((c) => c.uid);
     }
-    const keepBest = req.kind === "choose" && !["shed", "discard"].includes(req.prompt);
+    if (req.optional) return [];
+    const keepBest = req.kind === "choose" && !["shed", "discard", "drain"].includes(req.prompt);
     cards.sort((a, b) => (keepBest ? cardValue(b) - cardValue(a) : cardValue(a) - cardValue(b)));
     return cards.slice(0, req.count).map((c) => c.uid);
   }
@@ -106,7 +107,7 @@ export class Bot implements RunAgent {
     if (!playable.length) return null;
     const targets = (c: BodyCard) => (CARDS[c.id]!.tgt ? e.alive().map((f) => f.uid) : [undefined]);
 
-    if (this.style === "spender") {
+    if (this.style === "spender" || e.s.turn > 25) {
       if (hand.length <= 1) return null;
       for (const c of [...playable].sort((a, b) => cardValue(b) - cardValue(a))) {
         const t = e.alive().sort((a, b) => a.hp - b.hp)[0]?.uid;
@@ -224,7 +225,7 @@ export class Bot implements RunAgent {
         return;
       }
       case "actEnd":
-        ctl.leave();
+        await ctl.descend();
         return;
       case "over":
         return;

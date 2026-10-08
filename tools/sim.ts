@@ -14,12 +14,14 @@ const RUNS = Number(opt("runs", "200"));
 const CI = args.includes("--ci");
 const OUT = opt("out", "");
 const STYLES: BotStyle[] = ["balanced", "spender", "hoarder", "randomWounds"];
+const MOLT = opt("molt", "venom") as "venom" | "tide" | "storm";
+const ASC = Number(opt("turn", "0"));
 
-// Act 1 demo bands (provisional until acts 2-3 land; the full-run bands in the tuning doc apply then).
+// Full-run pass bands at Turn 0 (slifer-tuning.md §9).
 const BANDS: Record<string, [number, number]> = {
-  balanced: [0.45, 0.9],
-  spender: [0.08, 0.7],
-  hoarder: [0.08, 0.7],
+  balanced: [0.25, 0.45],
+  spender: [0.08, 0.3],
+  hoarder: [0.08, 0.3],
 };
 
 interface Result {
@@ -35,7 +37,7 @@ interface Result {
 const silent: Presenter = { emit: () => {} };
 
 async function playRun(style: BotStyle, seed: number): Promise<Result> {
-  const run = newRun({ seed: `sim-${seed}`, molt: "venom", onboarding: true });
+  const run = newRun({ seed: `sim-${seed}`, molt: MOLT, onboarding: MOLT === "venom", ascension: ASC });
   const bot = new Bot(style, seed);
   const ctl = new RunController(run, bot, silent);
   bot.ctl = ctl;
@@ -43,7 +45,7 @@ async function playRun(style: BotStyle, seed: number): Promise<Result> {
   const sc = run.screen;
   return {
     win: sc.kind === "over" && sc.win,
-    row: run.row,
+    row: run.row + (run.act - 1) * 16,
     diedTo: run.stats.diedTo,
     reason: sc.kind === "over" ? sc.reason : "stuck",
     maxHand: run.maxHand - run.scars,
@@ -57,7 +59,7 @@ const median = (xs: number[]) => {
   return s.length ? s[Math.floor(s.length / 2)]! : 0;
 };
 
-const report: Record<string, unknown> = { runs: RUNS, act: 1 };
+const report: Record<string, unknown> = { runs: RUNS, molt: MOLT, turn: ASC };
 const failures: string[] = [];
 const t0 = Date.now();
 const winRates: Record<string, number> = {};

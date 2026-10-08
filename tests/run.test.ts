@@ -22,7 +22,7 @@ test("content references resolve", () => {
   for (const f of Object.values(FOES)) assert.ok(CARDS[f.husk], `${f.id} husk ${f.husk}`);
   for (const pools of Object.values(ENCOUNTERS)) for (const enc of Object.values(pools).flat()) for (const id of enc) assert.ok(FOES[id], id);
   assert.equal(CARD_LIST.filter((c) => !c.molt && !c.special).length, 75);
-  assert.equal(CARD_LIST.filter((c) => c.molt === "venom").length, 30);
+  for (const m of ["venom", "tide", "storm"]) assert.equal(CARD_LIST.filter((c) => c.molt === m).length, 30, m);
   assert.ok(EVENT_LIST.length >= 10);
 });
 
@@ -51,4 +51,31 @@ test("a run saved mid-fight resumes identically", async () => {
   bot2.ctl = resumed;
   for (let i = 0; i < 5000 && copy.screen.kind !== "over"; i++) await bot2.handleScreen();
   assert.deepEqual(copy.stats, full.stats);
+});
+
+test("every molt can finish a run without errors", async () => {
+  for (const molt of ["tide", "storm"] as const) {
+    const run = await play(newRun({ seed: `MOLT-${molt}`, molt, onboarding: false }), 11);
+    assert.equal(run.screen.kind, "over", molt);
+  }
+});
+
+test("the Tail offers Close the Ring and giving ends the run", async () => {
+  const run = newRun({ seed: "TAIL-1", molt: "venom", onboarding: false });
+  run.act = 3;
+  run.screen = { kind: "actEnd" };
+  const bot = new Bot("balanced", 5);
+  const ctl = new RunController(run, bot, silent);
+  bot.ctl = ctl;
+  await ctl.descend();
+  const c = ctl.combat!;
+  const tail = c.s.foes[0]!;
+  assert.equal(tail.id, "boss.tail");
+  tail.hp = 15;
+  c.damageFoe(tail, 4, true);
+  const ring = c.body.hand.find((x) => x.id === "card.close_the_ring");
+  assert.ok(ring, "ring offered");
+  await c.play(ring!.uid);
+  ctl.settleCombat();
+  assert.deepEqual(run.screen, { kind: "over", win: true, reason: "ring", ending: "give" });
 });

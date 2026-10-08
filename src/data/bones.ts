@@ -69,6 +69,8 @@ const list: BoneDef[] = [
   // Boss
   { id: "bone.queen_carapace", name: "Queen's Carapace", rarity: "B", text: "Block 3 every turn. Draw 1 less each turn." },
   { id: "bone.old_skin", name: "Old Skin", rarity: "B", text: "You can never carry more than 2 scars." },
+  { id: "bone.spore_heart", name: "Spore Heart", rarity: "B", text: "Poisoned enemies spread their poison when they die." },
+  { id: "bone.drowned_pearl", name: "Drowned Pearl", rarity: "B", text: "+2 max hand. While Big, every hit lands 2 more wounds instead of 1." },
 ];
 
 export const BONES: Record<string, BoneDef> = Object.fromEntries(list.map((b) => [b.id, b]));

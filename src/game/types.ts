@@ -16,7 +16,15 @@ export type Act =
   | { k: "summon"; id: string; x: number }
   | { k: "heal"; n: number }
   | { k: "daze" }
-  | { k: "rest" };
+  | { k: "rest" }
+  /** Bristle: each card that hits it this round costs you a wound. */
+  | { k: "thorns" }
+  /** Your next strike hits you instead (a wound). */
+  | { k: "siren" }
+  /** Your next card also costs Sacrifice 1. */
+  | { k: "slime" }
+  /** Swallows a card from your draw pile for the rest of the fight. */
+  | { k: "swallow" };
 export type Intent = Act[];
 
 export interface FoeDef {
@@ -28,10 +36,10 @@ export interface FoeDef {
   husk: string;
   pattern: Intent[];
   /** Below this fraction of health, switch to phase 2 (bosses). */
-  phase2?: { at: number; pattern: Intent[]; noBlock?: boolean };
+  phase2?: { at: number; pattern: Intent[]; noBlock?: boolean; onEnter?: "pressure" };
   /** First pattern step is chosen at random per instance so groups don't act in lockstep. */
   stagger?: boolean;
-  onDeath?: "wasp";
+  onDeath?: "wasp" | "split" | "choir";
 }
 
 export interface FoeState {
@@ -55,6 +63,7 @@ export interface FoeState {
   blind: boolean;
   cancelEat: boolean;
   alive: boolean;
+  thorns?: number;
 }
 
 export interface Husk {
@@ -111,6 +120,11 @@ export interface CombatState {
   endTurnRequested: boolean;
   /** Cards that left the hand this turn to wounds; Sea Glass reads the last one. */
   lastWounded: number | null;
+  /** Per-fight counters for molt and enemy mechanics (missing keys read as 0). */
+  n?: Record<string, number>;
+  /** The Tail plays a copy of your deck. */
+  tail?: { draw: string[]; discard: string[]; ringGiven: boolean };
+  ending?: "devour" | "give";
 }
 
 export interface DeckCard {

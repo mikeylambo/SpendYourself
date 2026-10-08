@@ -520,11 +520,210 @@ V("venom.final_meal", "Final Meal", "strike", "R", {
   run: (k, [d]) => void k.e.hit(k.t, d!),
 });
 
+// ================= Tide (30): block, draw, cycling, thriving small =================
+const T = (id: string, name: string, type: CardType, rarity: Rarity, spec: Spec) => C(id, name, type, rarity, spec, "tide");
+const small = (k: CardCtx) => k.e.body.hand.length <= 3;
+T("tide.ebb", "Ebb", "body", "C", {
+  f: "Draw 2; discard 1", n: (k) => [2 + h(k.c)], t: ([d]) => `Draw ${d}, then discard 1.`,
+  run: async (k, [d]) => { k.e.draw(d!); const c = await k.e.chooseOne(others(k), "discard"); if (c) k.e.discard(c.uid); },
+});
+T("tide.riptide", "Riptide", "strike", "C", {
+  tgt: true, f: "Deal 3 + c; draw 1", n: (k) => [3 + k.c], t: ([d]) => `Deal ${d}. Draw 1.`, run: (k, [d]) => { k.e.hit(k.t, d!); k.e.draw(1); },
+});
+T("tide.swell_guard", "Swell Guard", "guard", "C", {
+  f: "Block 2 + c; draw 1 if your hand is 3 or fewer", n: (k) => [2 + k.c], t: ([b]) => `Block ${b}. Draw 1 if you hold 3 or fewer.`,
+  run: (k, [b]) => { k.e.gainBlock(b!); if (small(k)) k.e.draw(1); },
+});
+T("tide.current", "Current", "body", "C", {
+  f: "Discard any number, draw that many + 1", n: (k) => [1 + h(k.c)], t: ([n]) => `Discard any number. Draw that many + ${n}.`,
+  run: async (k, [n]) => {
+    const picked = await k.e.pickCards({ kind: "choose", prompt: "discardAny", cards: [...others(k)], count: others(k).length, optional: true });
+    for (const u of picked) k.e.discard(u);
+    k.e.draw(picked.length + n!);
+  },
+});
+T("tide.brine", "Brine", "guard", "C", {
+  f: "Block 1; Weaken 1 to all", n: (k) => [1 + k.c], t: ([b]) => `Block ${b}. Weaken 1 on all enemies.`,
+  run: (k, [b]) => { k.e.gainBlock(b!); for (const f of k.e.alive()) k.e.weaken(f, 1); },
+});
+T("tide.wave", "Wave", "strike", "C", {
+  f: "Deal 2 + c to all; draw 1", n: (k) => [2 + k.c], t: ([d]) => `Deal ${d} to all enemies. Draw 1.`, run: (k, [d]) => { k.e.hitAll(d!); k.e.draw(1); },
+});
+T("tide.low_tide", "Low Tide", "strike", "C", {
+  tgt: true, f: "Deal 8 − m (min 2) + 2c", n: (k) => [Math.max(2, 8 - k.m) + 2 * k.c], t: ([d]) => `Deal ${d}. Hits harder the smaller you are.`, run: (k, [d]) => void k.e.hit(k.t, d!),
+});
+T("tide.slip", "Slip", "guard", "C", {
+  f: "Block 3 + c if your hand is 3 or fewer, else Block 1", n: (k) => [small(k) ? 3 + k.c : 1], t: ([b]) => `Block ${b}. (3 + coil at 3 cards or fewer.)`, run: (k, [b]) => k.e.gainBlock(b!),
+});
+T("tide.salt", "Salt", "body", "C", {
+  f: "Return a card from discard to hand; it gains +1 coil", t: () => `Return a card from your discard pile. It coils +1.`, can: (k) => k.e.body.discard.length > 0,
+  run: async (k) => {
+    const b = k.e.body;
+    const c = await k.e.chooseOne([...b.discard], "regrow");
+    if (c && b.hand.length < b.maxHand) { b.discard.splice(b.discard.indexOf(c), 1); c.held = 0; b.hand.push(c); k.e.coil(c, 1 + k.u + k.c); }
+  },
+});
+T("tide.spray", "Spray", "strike", "C", {
+  tgt: true, f: "Deal 1 three times; +1 per hit if your hand is 3 or fewer", n: (k) => [1 + k.c + (small(k) ? 1 : 0), k.e.hits(3)], t: ([d, x]) => `Deal ${d} ${x} times. +1 each at 3 cards or fewer.`,
+  run: (k, [d, x]) => { for (let i = 0; i < x!; i++) k.e.hit(k.t?.alive ? k.t : k.e.target(), d!); },
+});
+T("tide.foam", "Foam", "guard", "C", {
+  f: "Block 2; the next card you draw this turn gains +1 coil", n: (k) => [2 + k.c], t: ([b]) => `Block ${b}. The next card you draw this turn coils +1.`,
+  run: (k, [b]) => { k.e.gainBlock(b!); k.e.setN("foam", 1); },
+});
+T("tide.cycle", "Cycle", "body", "C", {
+  f: "Shuffle your hand into your draw pile; draw that many", n: (k) => [h(k.c)], ownUpgrade: true, t: ([n]) => `Shuffle your hand into your draw pile. Draw that many${n ? ` + ${n}` : ""}.`,
+  run: (k, [n]) => {
+    const b = k.e.body;
+    const cnt = b.hand.length;
+    for (const c of b.hand.splice(0)) { c.coil = 0; b.draw.push(c); }
+    for (let i = b.draw.length - 1; i > 0; i--) { const j = Math.floor(k.e.rng.next() * (i + 1)); [b.draw[i], b.draw[j]] = [b.draw[j]!, b.draw[i]!]; }
+    k.e.addN("discarded", cnt);
+    k.e.draw(cnt + n! + k.u);
+  },
+});
+T("tide.undertow_pull", "Undertow Pull", "strike", "U", {
+  tgt: true, f: "Deal 4 + c; the target's next attack is −2", n: (k) => [4 + k.c], t: ([d]) => `Deal ${d}. Weaken 2.`, run: (k, [d]) => { k.e.hit(k.t, d!); k.e.weaken(k.t, 2); },
+});
+T("tide.tidal_shield", "Tidal Shield", "guard", "U", {
+  f: "Block 1 per card drawn this turn (max 6)", n: (k) => [Math.min(6, k.e.n("drawn")) + k.c], t: ([b]) => `Block ${b} (one per card drawn this turn, max 6).`, run: (k, [b]) => k.e.gainBlock(b!),
+});
+T("tide.high_water", "High Water", "body", "U", {
+  shed: true, f: "Draw until you have 5 cards. Shed", n: (k) => [5 + h(k.c)], t: ([n]) => `Draw until you hold ${n}. Shed.`,
+  run: (k, [n]) => void k.e.draw(Math.max(0, n! - k.e.body.hand.length)),
+});
+T("tide.spring_tide", "Spring Tide", "guard", "U", {
+  f: "Next turn draw 4 more; Block 2", n: (k) => [2 + k.c, 4], t: ([b, d]) => `Block ${b}. Next turn draw ${d} more.`, run: (k, [b, d]) => { k.e.gainBlock(b!); k.e.body.nextDraw += d!; },
+});
+T("tide.backwash", "Backwash", "strike", "U", {
+  tgt: true, f: "Deal damage equal to cards discarded this turn × 2", n: (k) => [k.e.n("discarded") * 2 + 2 * k.c], t: ([d]) => `Deal ${d} (2 per card discarded this turn).`, run: (k, [d]) => void k.e.hit(k.t, d!),
+});
+T("tide.drown", "Drown", "strike", "U", {
+  tgt: true, f: "Deal 6 + 2c; if the target is Weakened, deal double", n: (k) => [(6 + 2 * k.c) * (k.t && k.t.weak > 0 ? 2 : 1)], t: ([d]) => `Deal ${d}. Double against a weakened enemy.`, run: (k, [d]) => void k.e.hit(k.t, d!),
+});
+T("tide.calm_water", "Calm Water", "guard", "U", {
+  f: "Block 4 + c; cards in hand don't lose coil when discarded by wounds this turn", n: (k) => [4 + k.c], t: ([b]) => `Block ${b}. Wounds don't reset coil this turn.`,
+  run: (k, [b]) => { k.e.gainBlock(b!); k.e.setN("calmWater", 1); },
+});
+T("tide.gyre", "Gyre", "body", "U", {
+  f: "Discard your hand; draw that many + 2", n: (k) => [2 + h(k.c)], t: ([n]) => `Discard your hand. Draw that many + ${n}.`,
+  run: (k, [n]) => { const ids = others(k).map((c) => c.uid); for (const u of ids) k.e.discard(u); k.e.draw(ids.length + n!); },
+});
+T("tide.thin_and_quick", "Thin and Quick", "rite", "U", {
+  shed: true, f: "This fight, while your hand is 3 or fewer, your strikes deal +3", t: () => `This fight, your strikes deal +3 while you hold 3 or fewer. Shed.`,
+  run: (k) => k.e.setN("thinQuick", 1),
+});
+T("tide.sea_glass", "Sea Glass", "guard", "U", {
+  f: "Block 2 + c; Recall the last card a wound took", n: (k) => [2 + k.c], t: ([b]) => `Block ${b}. Take back the last card a wound took.`,
+  run: (k, [b]) => {
+    k.e.gainBlock(b!);
+    const b2 = k.e.body;
+    const i = b2.discard.findIndex((c) => c.uid === k.e.s.lastWounded);
+    if (i >= 0 && b2.hand.length < b2.maxHand) b2.hand.push(b2.discard.splice(i, 1)[0]!);
+  },
+});
+T("tide.flow", "Flow", "body", "U", {
+  f: "The next 2 cards you play this turn draw 1 each", n: (k) => [2 + h(k.c)], t: ([n]) => `The next ${n} cards you play this turn draw 1 each.`, run: (k, [n]) => k.e.setN("flow", n!),
+});
+T("tide.brackish", "Brackish", "rite", "U", {
+  tgt: true, shed: true, f: "Weaken 2 + c; Shed", n: (k) => [2 + k.c], t: ([w]) => `Weaken ${w}. Shed.`, run: (k, [w]) => k.e.weaken(k.t, w!),
+});
+T("tide.maelstrom", "Maelstrom", "strike", "R", {
+  f: "Deal 2 to all enemies per card discarded this turn", n: (k) => [(2 + k.c) * k.e.n("discarded")], t: ([d]) => `Deal ${d} to all enemies (per card discarded this turn).`, run: (k, [d]) => k.e.hitAll(d!),
+});
+T("tide.still_water", "Still Water", "guard", "R", {
+  shed: true, f: "This fight, at 2 or fewer cards, Block 2 at the start of each enemy turn. Shed", t: () => `This fight, Block 2 each enemy turn while you hold 2 or fewer. Shed.`,
+  run: (k) => k.e.setN("stillWater", 1),
+});
+T("tide.moon_pull", "Moon Pull", "rite", "R", {
+  f: "All enemies' intents this turn are halved", t: () => `Every enemy attack this turn is halved.`, run: (k) => k.e.setN("moonPull", 1),
+});
+T("tide.bottomless", "Bottomless", "body", "R", {
+  sac: 2, shed: true, f: "Your draw per turn is +1 this fight. Sacrifice 2. Shed", t: () => `Sacrifice 2. Draw 1 more every turn this fight. Shed.`, run: (k) => k.e.addN("bottomless", 1),
+});
+T("tide.one_scale", "One Scale", "guard", "R", {
+  f: "If this is your only card, Block all wounds and draw 4", n: (k) => [4 + h(k.c)], ownUpgrade: true, t: ([d]) => `If it's your only card: block every wound and draw ${d}.`,
+  run: (k, [d]) => { if (k.e.body.hand.length === 0) { k.e.gainBlock(99); k.e.draw(d! + k.u); } },
+});
+T("tide.return", "Return", "body", "R", {
+  shed: true, f: "Put your discard pile into your hand up to max hand. Shed", t: () => `Fill your hand from your discard pile. Shed.`,
+  run: (k) => { const b = k.e.body; while (b.discard.length && b.hand.length < b.maxHand) { const c = b.discard.pop()!; c.held = 0; b.hand.push(c); } },
+});
+
+// ================= Storm (30): coil, hoarding, one huge strike =================
+const S = (id: string, name: string, type: CardType, rarity: Rarity, spec: Spec) => C(id, name, type, rarity, spec, "storm");
+const totalCoil = (k: CardCtx) => others(k).reduce((a, c) => a + c.coil, 0);
+const maxed = (k: CardCtx) => others(k).some((c) => c.coil >= k.e.body.coilCap);
+S("storm.gather", "Gather", "body", "C", {
+  f: "Give 2 other cards +1 coil", n: (k) => [2 + h(k.c)], t: ([n]) => `Give ${n} other cards +1 coil.`,
+  run: async (k, [n]) => { const picked = await k.e.pickCards({ kind: "choose", prompt: "coil", cards: [...others(k)], count: n! }); for (const u of picked) { const c = others(k).find((x) => x.uid === u); if (c) k.e.coil(c, 1 + k.u); } },
+  ownUpgrade: true,
+});
+S("storm.thunderhead", "Thunderhead", "strike", "C", { tgt: true, f: "Deal 2 + 3c", n: (k) => [2 + 3 * k.c], t: ([d]) => `Deal ${d}.`, run: (k, [d]) => void k.e.hit(k.t, d!) });
+S("storm.static", "Static", "guard", "C", {
+  f: "Block 1 + c; another card +1 coil", n: (k) => [1 + k.c], t: ([b]) => `Block ${b}. Another card coils +1.`,
+  run: async (k, [b]) => { k.e.gainBlock(b!); const c = await k.e.chooseOne(others(k), "coil"); if (c) k.e.coil(c, 1); },
+});
+S("storm.spark", "Spark", "strike", "C", { shed: true, f: "Deal 1 + c to all; Shed", n: (k) => [1 + k.c], t: ([d]) => `Deal ${d} to all enemies. Shed.`, run: (k, [d]) => k.e.hitAll(d!) });
+S("storm.pressure", "Pressure", "strike", "C", { tgt: true, f: "Deal 1 per total coil in your hand", n: (k) => [totalCoil(k) + k.c], t: ([d]) => `Deal ${d} (all coil in your hand).`, run: (k, [d]) => void k.e.hit(k.t, d!) });
+S("storm.brood", "Brood", "body", "C", {
+  f: "End your turn; all cards in hand +1 extra coil", n: (k) => [1 + h(k.c)], t: ([c]) => `End your turn. Held cards coil ${c} extra.`,
+  run: (k, [c]) => { k.e.setN("brood", c!); k.e.requestEndTurn(); },
+});
+S("storm.crackle", "Crackle", "strike", "C", {
+  tgt: true, f: "Deal 3 + c; if your hand has a card at max coil, draw 1", n: (k) => [3 + k.c], t: ([d]) => `Deal ${d}. Draw 1 if a held card is at max coil.`,
+  run: (k, [d]) => { const m = maxed(k); k.e.hit(k.t, d!); if (m) k.e.draw(1); },
+});
+S("storm.charge_guard", "Charge Guard", "guard", "C", { f: "Block 1 per card in hand at coil 2+", n: (k) => [others(k).filter((c) => c.coil >= 2).length + k.c], t: ([b]) => `Block ${b} (one per card at coil 2+).`, run: (k, [b]) => k.e.gainBlock(b!) });
+S("storm.rumble", "Rumble", "rite", "C", { f: "Weaken 1 + c/2 to all", n: (k) => [1 + h(k.c)], t: ([w]) => `Weaken ${w} on all enemies.`, run: (k, [w]) => { for (const f of k.e.alive()) k.e.weaken(f, w!); } });
+S("storm.ground", "Ground", "rite", "C", {
+  f: "Choose a card: it can't be eaten this fight", n: (k) => [k.c], ownUpgrade: true, t: () => `A card in hand can't be eaten this fight.`,
+  run: async (k) => { const c = await k.e.chooseOne(others(k), "protect"); if (c) { c.anchored = true; if (k.u) k.e.coil(c, 1); } },
+});
+S("storm.arc", "Arc", "strike", "C", {
+  tgt: true, f: "Deal 2 + c, then 2 + c to a different enemy", n: (k) => [2 + k.c], t: ([d]) => `Deal ${d}, then ${d} to another enemy.`,
+  run: (k, [d]) => { k.e.hit(k.t, d!); const o = k.e.alive().find((f) => f !== k.t); k.e.hit(o ?? k.e.target(), d!); },
+});
+S("storm.anvil", "Anvil", "guard", "C", { f: "Block 2 + c; Coiled: Block 5 + c", n: (k) => [(coiled(k) ? 5 : 2) + k.c], t: ([b]) => `Block ${b}. Coiled: 5 + coil.`, run: (k, [b]) => k.e.gainBlock(b!) });
+S("storm.bolt", "Bolt", "strike", "U", { tgt: true, f: "Deal 4 + 4c", n: (k) => [4 + 4 * k.c], t: ([d]) => `Deal ${d}.`, run: (k, [d]) => void k.e.hit(k.t, d!) });
+S("storm.supercell", "Supercell", "body", "U", { sac: 1, f: "All cards in hand +1 coil; Sacrifice 1", n: (k) => [1 + h(k.c)], t: ([c]) => `Sacrifice 1. Every card in hand coils +${c}.`, run: (k, [c]) => { for (const x of others(k)) k.e.coil(x, c!); } });
+S("storm.thunderclap", "Thunderclap", "strike", "U", { shed: true, f: "Deal 2c + m to all enemies; Shed", n: (k) => [2 * k.c + k.m], t: ([d]) => `Deal ${d} to all enemies. Shed.`, run: (k, [d]) => k.e.hitAll(d!) });
+S("storm.eye", "Eye of the Storm", "guard", "U", { shed: true, f: "Block 3; cards in hand coil +1 more at end of turn this fight. Shed", n: (k) => [3 + k.c], t: ([b]) => `Block ${b}. This fight, held cards coil 1 more each turn. Shed.`, run: (k, [b]) => { k.e.gainBlock(b!); k.e.addN("coilBonus", 1); } });
+S("storm.discharge", "Discharge", "strike", "U", {
+  tgt: true, f: "Reset another card's coil to 0; deal 6 per coil removed", n: (k) => [6 + k.c], t: ([d]) => `Drain another card's coil. Deal ${d} per coil.`,
+  can: (k) => others(k).some((c) => c.coil > 0) || k.e.body.hand.length > 1,
+  run: async (k, [d]) => { const c = await k.e.chooseOne(others(k).filter((x) => x.coil > 0), "drain"); if (c) { const n = c.coil; c.coil = 0; k.e.hit(k.t, d! * n); } },
+});
+S("storm.long_wait", "Long Wait", "strike", "U", { tgt: true, f: "Deal 1 + 3 per turn this card has been in your hand (no cap)", n: (k) => [1 + 3 * k.card.held], t: ([d]) => `Deal ${d}. +3 for every turn you held it.`, run: (k, [d]) => void k.e.hit(k.t, d!) });
+S("storm.chain", "Chain Lightning", "strike", "U", { f: "Deal 3 + c, bouncing to every enemy once", n: (k) => [3 + k.c], t: ([d]) => `Deal ${d} to every enemy.`, run: (k, [d]) => k.e.hitAll(d!) });
+S("storm.lodestone", "Lodestone", "rite", "U", { f: "Your highest-coil card can't be discarded by wounds this turn", n: (k) => [1 + k.c], t: ([b]) => `Wounds can't take your highest-coil card this turn. Block ${b}.`, run: (k, [b]) => { k.e.setN("lodestone", 1); k.e.gainBlock(b! - 1); } });
+S("storm.squall", "Squall", "strike", "U", {
+  tgt: true, f: "Deal 3 + c twice; Coiled: three times", n: (k) => [3 + k.c, k.e.hits(coiled(k) ? 3 : 2)], t: ([d, x]) => `Deal ${d} ${x} times.`,
+  run: (k, [d, x]) => { for (let i = 0; i < x!; i++) k.e.hit(k.t?.alive ? k.t : k.e.target(), d!); },
+});
+S("storm.steady", "Steady", "guard", "U", { f: "Block 2 + c; your coil doesn't reset on the next card you play", n: (k) => [2 + k.c], t: ([b]) => `Block ${b}. The next card you play keeps its coil.`, run: (k, [b]) => { k.e.gainBlock(b!); k.e.setN("steady", 1); } });
+S("storm.downpour", "Downpour", "body", "U", { f: "Draw 2; they enter at coil 1", n: (k) => [2 + h(k.c)], t: ([d]) => `Draw ${d}. They arrive coiled 1.`, run: (k, [d]) => { for (const c of k.e.draw(d!)) k.e.coil(c, 1); } });
+S("storm.ozone", "Ozone", "rite", "U", { f: "Each card played after this one this turn deals 2 to a random enemy", t: () => `Every card you play after this one this turn deals 2 to a random enemy.`, run: (k) => k.e.setN("ozone", 1) });
+S("storm.skybreaker", "Skybreaker", "strike", "R", { tgt: true, shed: true, f: "Deal 10 × c. Shed", n: (k) => [10 * k.c], ownUpgrade: true, t: ([d]) => `Deal ${d}. Shed.`, run: (k, [d]) => void k.e.hit(k.t, d! + k.u * 5) });
+S("storm.patient_god", "Patient God", "rite", "R", { shed: true, f: "This fight, cards you don't play coil +2 per turn", t: () => `This fight, held cards coil 2 more each turn. Shed.`, run: (k) => k.e.setN("patientGod", 1) });
+S("storm.overcharge", "Overcharge", "body", "R", { sac: 2, shed: true, f: "Set every card in hand to max coil. Sacrifice 2. Shed", t: () => `Sacrifice 2. Every card in hand reaches max coil. Shed.`, run: (k) => { for (const x of others(k)) k.e.coil(x, 99); } });
+S("storm.storm_crown", "Storm Crown", "rite", "R", { shed: true, f: "This fight, your coil cap is unlimited", t: () => `This fight, coil has no cap. Shed.`, run: (k) => { k.e.body.coilCap = 99; } });
+S("storm.calm_before", "Calm Before", "rite", "R", {
+  f: "Skip your next two turns' plays; all cards in hand +3 coil; Block 4 each enemy turn", t: () => `Every card in hand coils +3. You can't play next two turns; Block 4 each enemy turn.`,
+  run: (k) => { for (const x of others(k)) k.e.coil(x, 3); k.e.setN("calm", 3); k.e.setN("calmBlock", 1); k.e.requestEndTurn(); },
+});
+S("storm.final_strike", "Final Strike", "strike", "R", {
+  tgt: true, f: "Play only as your last card: deal 5 × total coil spent this fight", n: (k) => [5 * (k.e.s.coilSpent + k.c)], t: ([d]) => `Only as your last card. Deal ${d} (5 per coil spent this fight).`,
+  can: (k) => k.e.body.hand.length === 1, run: (k, [d]) => void k.e.hit(k.t, d!),
+});
+
 export const CARDS: Record<string, CardDef> = Object.fromEntries(list.map((c) => [c.id, c]));
 export const CARD_LIST = list;
 
 export const STARTERS: Partial<Record<MoltId, string[]>> = {
   venom: ["card.fang", "card.fang", "card.fang", "card.fang", "card.scale", "card.scale", "card.scale", "card.venom_bite", "card.venom_bite", "card.swallow"],
+  tide: ["card.fang", "card.fang", "card.fang", "card.scale", "card.scale", "card.scale", "card.scale", "tide.ebb", "tide.ebb", "tide.riptide"],
+  storm: ["card.fang", "card.fang", "card.fang", "card.fang", "card.scale", "card.scale", "card.scale", "storm.gather", "storm.gather", "storm.thunderhead"],
 };
 
 /** Cards that can appear as rewards and in the Burrower for a molt. */

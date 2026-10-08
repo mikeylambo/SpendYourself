@@ -373,3 +373,85 @@ button { font: inherit; color: inherit; }
 /* In the fanned hand the right edge of each card sits under its neighbour: keep state on the left. */
 .hand .card .coil { left: 8%; right: auto; }
 .hand .card .rar { display: none; }
+
+/* ---------- acts: down is darker ---------- */
+.fight[data-act="2"] { --paper: var(--vellum); background: var(--vellum); }
+.fight[data-act="3"] { background: var(--drowned); color: var(--bone); }
+.fight[data-act="3"] .bar, .fight[data-act="3"] .foe, .fight[data-act="3"] .core { color: var(--bone) !important; }
+.fight[data-act="3"] .might .label { color: var(--bone); }
+.fight[data-act="3"] .foe .art { filter: invert(0.9) sepia(0.15); }
+.fight[data-act="3"] .foe .hpbar { border-color: var(--bone); }
+.fight[data-act="3"] .foe .hpbar i { background: var(--bone); }
+.fight[data-act="3"] .foe .ring, .fight[data-act="3"] .plate { border-color: var(--bone); }
+.fight[data-act="3"] .plate.big { background: var(--bone); color: var(--ink); }
+.fight[data-act="3"] .intent { color: #ff7a5c; }
+.fight[data-act="3"] .intent.calm, .fight[data-act="3"] .intent .next { color: var(--bone); }
+.fight[data-act="3"]::before { background: radial-gradient(130% 85% at 50% 30%, rgba(143, 220, 230, 0.07) 0%, transparent 45%, rgba(0, 0, 0, 0.5) 100%); }
+.fight[data-act="3"] .actions .btn.end { background: var(--bone); color: var(--ink); border-color: var(--bone); }
+
+/* ---------- coach tips ---------- */
+.coach {
+  position: absolute; left: 50%; top: calc(58px + var(--safe-t)); transform: translateX(-50%); z-index: 46;
+  width: min(440px, calc(100% - 32px)); display: flex; gap: 12px; align-items: center; text-align: left;
+  background: var(--ink); color: var(--bone); border: 1.5px solid var(--gold); padding: 12px 14px;
+  font-family: var(--f-book); font-size: 1.05em; line-height: 1.3; cursor: pointer; animation: rise 0.3s;
+  box-shadow: 0 10px 30px rgba(0,0,0,.35);
+}
+.coach b { flex: 0 0 auto; width: 30px; height: 30px; border: 1px solid var(--gold); display: grid; place-items: center; color: var(--gold); }
+.coach b svg { width: 18px; height: 18px; }
+
+/* ---------- how to play ---------- */
+.howto { justify-content: center; text-align: center; gap: 16px; }
+.howto-art { height: 120px; display: grid; place-items: center; color: var(--bone); }
+.howto-art svg { width: 100px; height: 100px; }
+.guide-num { font-family: var(--f-title); font-size: 110px; line-height: 1; }
+.guide-icons { display: flex; gap: 14px; color: var(--vermilion); }
+.guide-icons svg { width: 52px; height: 52px; }
+.guide-rings { display: flex; gap: 12px; }
+.guide-rings i { width: 34px; height: 34px; border-radius: 50%; border: 3px solid var(--bone-dim); }
+.guide-rings i.on { background: var(--gold); border-color: #8a6410; box-shadow: 0 0 14px rgba(217,164,50,.7); }
+.howto-lines { max-width: 34ch; display: flex; flex-direction: column; gap: 10px; font-size: 1.18em; line-height: 1.4; }
+.howto-lines p { margin: 0; }
+.howto-dots { display: flex; gap: 8px; }
+.howto-dots i { width: 8px; height: 8px; border-radius: 50%; background: var(--bone-dim); opacity: 0.35; }
+.howto-dots i.on { opacity: 1; background: var(--gold); }
+
+/* ---------- molt picker / turns ---------- */
+.molts { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; width: min(760px, 100%); }
+.molt-plate { --acc: var(--venom); appearance: none; background: var(--ink); color: var(--bone); border: 1.5px solid var(--bone-dim); border-top: 6px solid var(--acc); padding: 16px; display: flex; flex-direction: column; gap: 8px; align-items: center; text-align: center; cursor: pointer; }
+.molt-plate:hover, .molt-plate:focus-visible { border-color: var(--acc); outline: none; background: #25211d; }
+.molt-plate:disabled { opacity: 0.45; cursor: default; }
+.molt-plate b { font-family: var(--f-poster); text-transform: uppercase; letter-spacing: 0.12em; font-size: 1.6em; font-weight: 600; color: var(--acc); }
+.molt-plate span { font-family: var(--f-poster); letter-spacing: 0.06em; text-transform: uppercase; font-size: 0.85em; display: inline-flex; align-items: center; gap: 6px; }
+.molt-plate span svg { width: 14px; height: 14px; }
+.molt-plate em { font-size: 0.95em; color: var(--bone-dim); }
+.molt-plate small { font-family: var(--f-poster); letter-spacing: 0.1em; color: var(--gold); }
+.molt-ring { width: 120px; }
+.molt-ring svg { width: 100%; height: auto; }
+.turns { display: flex; align-items: center; gap: 14px; width: min(480px, 100%); }
+.turns > div { flex: 1; text-align: center; display: flex; flex-direction: column; gap: 4px; }
+.turns b { font-family: var(--f-poster); letter-spacing: 0.1em; font-size: 1.3em; }
+.turns span { color: var(--bone-dim); font-size: 0.95em; }
+
+/* ---------- library / history ---------- */
+.tabs { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+.plate-screen h2 { font-family: var(--f-poster); text-transform: uppercase; letter-spacing: 0.08em; font-weight: 600; margin: 8px 0 0; width: min(100%, 860px); }
+.plate-screen h2 small { color: var(--bone-dim); font-size: 0.6em; letter-spacing: 0.1em; }
+.card.unseen { position: relative; display: grid; place-items: center; background: #24201c; border: 1px dashed var(--bone-dim); cursor: default; box-shadow: none; }
+.card.unseen span { font-family: var(--f-title); font-size: 40px; color: var(--bone-dim); opacity: 0.5; }
+.history { width: min(760px, 100%); display: flex; flex-direction: column; gap: 4px; }
+.hist-row { display: grid; grid-template-columns: 1fr 1.3fr 1.4fr 0.6fr 1fr; gap: 8px; padding: 8px 4px; border-bottom: 1px solid rgba(236,227,207,.12); font-family: var(--f-poster); letter-spacing: 0.04em; font-size: 0.92em; align-items: center; }
+.hist-row span { display: inline-flex; align-items: center; gap: 4px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.hist-row svg { width: 14px; height: 14px; }
+
+/* ---------- inspect extras ---------- */
+.gloss { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 10px 0 0; font-size: 0.95em; }
+.gloss dt { font-family: var(--f-poster); letter-spacing: 0.06em; text-transform: uppercase; color: var(--gold); }
+.gloss dd { margin: 0; color: var(--bone-dim); }
+.foe-inspect .foe-plate { width: min(240px, 60vw); background: var(--bone); padding: 8px; }
+.foe-inspect .foe-plate svg, .foe-inspect .foe-plate img { width: 100%; height: auto; display: block; }
+.foe-inspect h2 { text-align: left; }
+.act-plate { justify-content: center; }
+.act-plate .label { color: var(--bone-dim); }
+.result-body svg { width: 100%; height: auto; }
+.card[data-id="card.close_the_ring"] { box-shadow: 0 0 0 2px var(--gold), 0 0 24px rgba(217,164,50,.7); }
