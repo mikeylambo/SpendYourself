@@ -16,27 +16,36 @@ npm run sim -- --runs 200 [--ci] [--out sim-report.json]   # balance sim
 npm run build      # static build in dist/ (relative paths; drop on itch.io or any host)
 ```
 
-## What's built (milestones 1–2: the act 1 portal demo)
+## What's built (milestones 1–5)
 
+- **The full descent**: three acts (Topsoil, the Roots, the Deep Water), each a branching 15-row map
+  with fights, elites, rests, events, the Burrower, treasure and a boss: the Beetle Queen, the
+  Mycelial Choir (three heads) and the Drowned Mouth. Then **the Tail**, which plays a copy of your
+  own deck, and the choice: finish it (**Devour**) or play **Close the Ring** (**Give**). Both are
+  wins, recorded per molt.
+- **Three molts**: Venom, Tide and Storm, each with a starter deck, a passive and 30 cards, plus
+  75 shared cards. A molt picker appears once Tide unlocks (reach the Roots); Storm unlocks after
+  the Drowned Mouth.
 - **Rules (`src/bodydeck`, `src/game`)**: `BodyDeck` (piles, might, wounds and wound choice, block,
-  coil, Big, Heavy, scars), the combat engine with every enemy intent (wounds, multi-hit, eat, bind,
-  poison, block, buff, summon, heal, daze), devour and husks, Venom's Hunger, deterministic seeded
-  RNG streams, run save/resume at every turn and node.
-- **Content**: Venom molt; all **75 shared cards** and **Venom's 30**; **58 bones**; **18 events**;
-  act 1 (Topsoil) with **8 enemies + the grub**, **3 elites** and **the Beetle Queen** (two phases);
-  branching 15-row map with fights, elites, rests (Mend / Coil / Shed), the Burrower, treasure and events.
-- **Presentation (`src/ui`)**: the style board's ink-on-bone poster look, procedural engraved creature
-  plates and card emblems, Uro's body drawn under the hand (thickens when Big, frays when thin),
-  live card numbers with coil-raised numbers in gold, intents by shape first, semantic synthesized
-  audio (scale tear, coil creak, swallow) with a drone that thins as the hand shrinks.
+  coil, Big, Heavy, scars), every enemy intent (wounds, multi-hit, eat, bind, poison, block, buff,
+  summon, heal, daze, thorns, siren, slime, swallow), 33 enemies, 9 elites, 60 bones, 18 events,
+  deterministic seeded RNG, run save/resume at every turn and node.
+- **Post-game**: Turns 1–20 (`src/data/turns.ts`, unlocked one at a time by winning), a date-seeded
+  **Daily Descent** after three runs (local best per day; an online leaderboard needs a server),
+  run history, a card library of everything you've seen, and the bones list.
+- **Teaching**: an 8-page **How to Play** (shown before the first run, reopenable from the title),
+  one-time **coach tips** the first time each rule shows up on the board, **long-press an enemy**
+  for its next moves in words, and a **keyword glossary** when you inspect a card. Tips can be
+  turned off or reset in Settings.
+- **Presentation (`src/ui`)**: the style board's ink-on-bone poster look; paper darkens per act
+  (bone, vellum, drowned grey with inverted ink); procedural engraved plates for every creature,
+  card emblems, Uro's body under the hand, the ring on title, rests and results; endings get their
+  own codas. Semantic synthesized audio with a drone that thins as the hand shrinks.
 - **Input**: one semantic layer. Touch (tap, tap again or tap an enemy to play, long-press to
-  inspect), mouse, keyboard (1–9 play, arrows target, Space play, Enter end turn, Q/E move, I
-  inspect, Esc pause), gamepad (LB/RB move, A play, X end turn, Y inspect, d-pad target, Start pause).
-- **Onboarding** per `slifer-onboarding.md` on the first run (scripted first three fights, one-time
-  prompts). **Assists**: wound confirm, next-move preview, fight speed, text size, reduced motion,
-  high-contrast ink.
-- **Balance sim + CI**: Balanced, Spender, Hoarder and random-wound bots play seeded runs against the
-  same rules (`tools/sim.ts`); CI runs typecheck, tests, build and the sim report.
+  inspect), mouse, keyboard (1–9 select/play, arrows target, Space play, Enter end turn, Q/E move,
+  I inspect, Esc pause), gamepad (LB/RB move, A play, X end turn, Y inspect, d-pad target, Start pause).
+- **Balance sim + CI**: Balanced, Spender, Hoarder and random-wound bots play seeded full runs per
+  molt (`npm run sim -- --molt tide --turn 5`); CI runs typecheck, tests, build and the sim report.
 
 ## Built on the SLU Web Shell
 
@@ -52,21 +61,26 @@ Shell's `modules/` as-is.
 Every illustration is procedural until generated art lands. Drop files named by id into `art/`
 (see [`art/README.md`](art/README.md)) and they replace the engravings at build time.
 
-## Decisions taken during the build (all reversible, all in `src/data/tuning.ts`)
+## Decisions taken during the build (all reversible; numbers in `src/data/tuning.ts`)
 
-1. **The opening hand fills the body**: `max(6, max hand − 1)` instead of a flat 6. With a flat 6,
-   devouring only raised a cap the hand never reached (the sim's bots hit max hand 18 with 3–6 cards
-   in hand), so devouring didn't make Uro bigger or stronger. Now a big body opens big, which also
-   brings Big and Heavy into play as designed. At max hand 7 it is still 6.
-2. **Venom's twin husk** adds both cards but one growth step (+1 max hand), not two. Two steps pushed
-   act 1 max hand to about 20 against the tuning doc's target of about 10.
+1. **The opening hand grows with the body**: it fills to max hand − 1 up to the Heavy size (12),
+   then grows one card per two max hand. With a flat 6, devouring only raised a cap the hand never
+   reached; with a full fill, late bodies of 25+ cards trivialised act 3.
+2. **Venom's twin husk** adds both cards but one growth step.
+3. **First-pass numbers trimmed by the sim**: Beetle Queen 100 HP, phase 2 wounds 5, one grub per
+   summon in phase 2; Wasp Court alternates 1 and 2 wounds instead of 2 every turn; Choir heads
+   45 HP each (from 60) with a 6 heal (from 8).
+4. **The Tail** has max hand × 12 health (counting at most 15 cards, the size the docs expect by act 3), draws two cards a turn from a copy of your deck (three
+   below half), and turns strikes into wounds (damage ÷ 4), guards into block and the rest into
+   strength or poison. Close the Ring appears when it is down to its last 12 health ("last card").
+5. Interpretations where the docs were open: Thorn Knot's bristle costs you a wound per card that
+   hits it; Sirens make your next strike a wound to yourself; Coax redirects double the wounds as
+   damage to another enemy; the Drowned Mouth swallows from your draw pile for the fight only.
 
 ## Known gaps / next
 
-- Acts 2 and 3, Tide and Storm, the Tail and both endings, Turns, Daily Descent, library and
-  history screens (milestones 3–5).
-- Balance (act 1 sim, 100 runs per bot): Balanced 67%, Hoarder 65%, Spender 0%, random-wound bot 66%.
-  Spender isn't viable yet, and wound choice isn't mattering enough. The tuning doc says to sharpen
-  eat and bind for the second.
-- Not yet tested on real phones or with a physical gamepad (only headless Chromium at phone and
-  desktop sizes, plus keyboard). No WebGL halftone pass yet; paper grain is a CSS noise layer.
+- Balance: see the latest sim report (CI artifact). Spender is still not viable and wound choice
+  isn't mattering enough; the tuning doc's levers are eat and bind pressure.
+- Not yet tested on real phones or a physical gamepad (headless Chromium at phone and desktop
+  sizes, keyboard, and a simulated standard gamepad only). No WebGL halftone pass; paper grain is CSS.
+- Online Daily leaderboard, cloud saves and the native wrappers (milestone 6 territory).

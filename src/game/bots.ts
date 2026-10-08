@@ -56,7 +56,9 @@ function evaluate(e: Combat): number {
 
 function cloneCombat(e: Combat, agent: Agent): Combat {
   const s = structuredClone(e.s) as CombatState;
-  const run = structuredClone(e.run);
+  // The map and history never change inside a fight: share them, copy what cards can touch.
+  const r = e.run;
+  const run = { ...r, deck: r.deck.map((d) => ({ ...d })), bones: [...r.bones], nextFight: { ...r.nextFight }, stats: { ...r.stats, devoured: [...r.stats.devoured] } };
   const rng = new DeterministicRng((e.rng as DeterministicRng).state ?? 1);
   return new Combat(s, run, rng, agent, silent);
 }
@@ -107,15 +109,18 @@ export class Bot implements RunAgent {
     if (!playable.length) return null;
     const targets = (c: BodyCard) => (CARDS[c.id]!.tgt ? e.alive().map((f) => f.uid) : [undefined]);
 
-    if (this.style === "spender" || e.s.turn > 25) {
+    if (this.style === "spender" || e.s.turn > 40) {
       if (hand.length <= 1) return null;
       for (const c of [...playable].sort((a, b) => cardValue(b) - cardValue(a))) {
         const t = e.alive().sort((a, b) => a.hp - b.hp)[0]?.uid;
-        const before = e.alive().reduce((a, f) => a + f.hp, 0);
         const sim = cloneCombat(e, this);
         await sim.play(c.uid, t);
-        const after = sim.alive().reduce((a, f) => a + f.hp, 0);
-        if (after < before || sim.body.block > e.body.block || sim.s.over === "won") return { uid: c.uid, target: t };
+        // Progress is damage to the enemies that were there (a split adds new ones).
+        const hurt = e.alive().some((f) => {
+          const g = sim.s.foes.find((x) => x.uid === f.uid);
+          return !g || !g.alive || g.hp < f.hp;
+        });
+        if (hurt || sim.body.block > e.body.block || sim.s.over === "won") return { uid: c.uid, target: t };
       }
       return null;
     }

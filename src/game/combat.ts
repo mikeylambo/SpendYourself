@@ -133,7 +133,7 @@ export function createCombat(run: RunState, encounter: string[], kind: FoeTier, 
     const def = FOES[f.id]!;
     if (def.tier === "boss" && asc(run.ascension, 18)) f.hp = f.max = Math.ceil(f.max * 1.1);
     if (f.id === "boss.tail") {
-      f.hp = f.max = Math.max(60, (run.maxHand - run.scars) * 12);
+      f.hp = f.max = Math.max(60, Math.min(run.maxHand - run.scars, 15) * 12);
       const ids = run.deck.map((d) => d.id);
       shuffle(ids, rng);
       s.tail = { draw: ids, discard: [], ringGiven: false };

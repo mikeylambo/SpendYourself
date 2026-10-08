@@ -455,3 +455,9 @@ button { font: inherit; color: inherit; }
 .act-plate .label { color: var(--bone-dim); }
 .result-body svg { width: 100%; height: auto; }
 .card[data-id="card.close_the_ring"] { box-shadow: 0 0 0 2px var(--gold), 0 0 24px rgba(217,164,50,.7); }
+@media (max-width: 600px) {
+  .molt-plate { display: grid; grid-template-columns: 84px 1fr; grid-template-rows: auto auto auto; text-align: left; align-items: center; justify-items: start; column-gap: 14px; row-gap: 2px; padding: 12px; }
+  .molt-ring { width: 84px; grid-row: 1 / span 4; }
+  .molt-plate b { font-size: 1.3em; }
+  .grid-cards, .shop-grid { grid-template-columns: repeat(auto-fill, minmax(102px, 1fr)); gap: 10px; }
+}

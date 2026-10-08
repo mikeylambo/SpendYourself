@@ -31,17 +31,17 @@ const list: FoeDef[] = [
   // Act 1 elites
   { id: "elite.badger", name: "Badger", hp: 40, act: 1, tier: "elite", husk: "card.mouthful", pattern: [I(W(3)), I(EAT()), I(W(5))] },
   { id: "elite.mole_king", name: "Mole King", hp: 46, act: 1, tier: "elite", husk: "card.stone_coil", pattern: [I(BLOCK(10)), I(W(2, 3))] },
-  { id: "elite.wasp", name: "Court Wasp", hp: 12, act: 1, tier: "elite", husk: "card.thrash", pattern: [I(W(2))], onDeath: "wasp" },
+  { id: "elite.wasp", name: "Court Wasp", hp: 12, act: 1, tier: "elite", husk: "card.thrash", pattern: [I(W(1)), I(W(2))], stagger: true, onDeath: "wasp" },
   // Act 1 boss
   {
     id: "boss.beetle_queen",
     name: "The Beetle Queen",
-    hp: 110,
+    hp: 100,
     act: 1,
     tier: "boss",
     husk: "card.swallow_whole",
     pattern: [I(BLOCK(8), W(4)), I(EAT(), W(2)), I(SUMMON("foe.grub", 2))],
-    phase2: { at: 0.5, noBlock: true, pattern: [I(W(6)), I(EAT(), W(3)), I(SUMMON("foe.grub", 2), W(2))] },
+    phase2: { at: 0.5, noBlock: true, pattern: [I(W(5)), I(EAT(), W(2)), I(SUMMON("foe.grub", 1), W(2))] },
   },
 
   // Act 2: The Roots
@@ -59,9 +59,9 @@ const list: FoeDef[] = [
   { id: "elite.honey_fungus", name: "Honey Fungus", hp: 60, act: 2, tier: "elite", husk: "card.spine_burst", pattern: [I(SUMMON("foe.spore_puff", 1)), I(W(3)), I(W(2), POISON(2))] },
   { id: "elite.owl_bones", name: "Owl of Bones", hp: 55, act: 2, tier: "elite", husk: "card.reflection", pattern: [I(EAT(2)), I(W(4)), I(W(2, 2))] },
   // Act 2 boss: three heads
-  { id: "boss.choir_bind", name: "Choir Head", hp: 60, act: 2, tier: "boss", husk: "card.circle_strike", pattern: [I(BIND()), I(W(3)), I(W(2))], onDeath: "choir" },
-  { id: "boss.choir_rot", name: "Choir Head", hp: 60, act: 2, tier: "boss", husk: "card.circle_strike", pattern: [I(POISON(3)), I(W(2)), I(W(3))], onDeath: "choir" },
-  { id: "boss.choir_bloom", name: "Choir Head", hp: 60, act: 2, tier: "boss", husk: "card.circle_strike", pattern: [I(HEAL(8)), I(W(2)), I(BUFF(1, true))], onDeath: "choir" },
+  { id: "boss.choir_bind", name: "Choir Head", hp: 45, act: 2, tier: "boss", husk: "card.circle_strike", pattern: [I(BIND()), I(W(3)), I(W(2))], onDeath: "choir" },
+  { id: "boss.choir_rot", name: "Choir Head", hp: 45, act: 2, tier: "boss", husk: "card.circle_strike", pattern: [I(POISON(3)), I(W(2)), I(W(3))], onDeath: "choir" },
+  { id: "boss.choir_bloom", name: "Choir Head", hp: 45, act: 2, tier: "boss", husk: "card.circle_strike", pattern: [I(HEAL(6)), I(W(2)), I(BUFF(1, true))], onDeath: "choir" },
 
   // Act 3: The Deep Water
   { id: "foe.blind_eel", name: "Blind Eel", hp: 22, act: 3, tier: "normal", husk: "card.lash", pattern: [I(W(3)), I(W(1, 3))] },

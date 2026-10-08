@@ -231,6 +231,7 @@ export class App implements RunAgent, Presenter {
     const draw = () => {
       const el = h(`<section class="screen dark"><div class="plate-screen">
         <h1>Molt</h1>
+        ${meta.maxTurn > 0 ? `<div class="turns"><button class="btn" data-nav data-t="-1" ${turn <= 0 ? "disabled" : ""}>−</button><div><b>Turn ${turn}</b><span>${turn ? escapeHtml(TURNS[turn] ?? "") : "No extra pressure"}</span></div><button class="btn" data-nav data-t="1" ${turn >= meta.maxTurn ? "disabled" : ""}>+</button></div>` : ""}
         <div class="molts">${MOLTS.map((m) => {
           const open = meta.unlocked.includes(`molt.${m}`);
           const ends = meta.endings[m] ?? [];
@@ -242,7 +243,6 @@ export class App implements RunAgent, Presenter {
             ${ends.length ? `<small>${ends.map((e) => (e === "give" ? "Give" : "Devour")).join(" · ")}</small>` : ""}
           </button>`;
         }).join("")}</div>
-        ${meta.maxTurn > 0 ? `<div class="turns"><button class="btn" data-nav data-t="-1" ${turn <= 0 ? "disabled" : ""}>−</button><div><b>Turn ${turn}</b><span>${turn ? escapeHtml(TURNS[turn] ?? "") : "No extra pressure"}</span></div><button class="btn" data-nav data-t="1" ${turn >= meta.maxTurn ? "disabled" : ""}>+</button></div>` : ""}
         <button class="btn ghost" data-nav data-back>${icon("back")}</button>
       </div></section>`);
       el.querySelectorAll<HTMLElement>("[data-m]").forEach((b) =>
