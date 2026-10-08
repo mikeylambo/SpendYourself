@@ -1,0 +1,22 @@
+name: CI
+on:
+  push:
+  pull_request:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm ci
+      - run: npm run check
+      - run: npm test
+      - run: npm run build
+      # Balance report (slifer-tuning.md §9). Reported, not gating, until the act 1 bands are tuned; add --ci to gate.
+      - run: npm run sim -- --runs 200 --out sim-report.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sim-report
+          path: sim-report.json
