@@ -175,6 +175,16 @@ export class Combat {
   // ---------- fight start ----------
 
   async begin(): Promise<void> {
+    this.busy = true;
+    try {
+      await this.setup();
+    } finally {
+      this.busy = false;
+    }
+    await this.emit("turn.start", { turn: this.s.turn });
+  }
+
+  private async setup(): Promise<void> {
     const s = this.s;
     const b = this.body;
     const run = this.run;
@@ -206,7 +216,6 @@ export class Combat {
       run.nextFight.selfPoisonFights--;
     }
     await this.emit("fight.start");
-    await this.emit("turn.start", { turn: s.turn });
   }
 
   // ---------- intents ----------

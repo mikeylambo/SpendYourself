@@ -32,6 +32,8 @@ const PROMPTS: Record<string, string> = {
 const DEATH: Record<string, string> = { torn: "Torn apart", spent: "Spent", worn: "Worn to nothing" };
 const NODE_ICON: Record<string, string> = { fight: "claw", elite: "elite", rest: "rest_node", event: "event", shop: "shop", treasure: "treasure", boss: "boss" };
 
+/** Activate the focused element (HTML buttons and SVG map nodes alike). */
+const activate = (el: Element | null) => void el?.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
 const wait = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 const h = (html: string): HTMLElement => {
   const t = document.createElement("template");
@@ -136,13 +138,13 @@ export class App implements RunAgent, Presenter {
     if (this.overlayEl) {
       if (dir) return navMove(scope, dir);
       if (a === "back" || a === "pause") return this.overlayBack?.();
-      if (a === "confirm" || a === "enter") return (document.activeElement as HTMLElement | null)?.click();
+      if (a === "confirm" || a === "enter") return activate(document.activeElement);
       if (a === "card.inspect") return;
       return;
     }
     if (this.view === "run" && this.run?.screen.kind === "combat") return this.fightAction(a);
     if (dir) return navMove(scope, dir);
-    if (a === "confirm" || a === "enter") return (document.activeElement as HTMLElement | null)?.click();
+    if (a === "confirm" || a === "enter") return activate(document.activeElement);
     if (a === "back" || a === "pause") {
       if (this.view === "settings") return this.settingsBack();
       if (this.view === "run") return this.showPause();
@@ -310,7 +312,12 @@ export class App implements RunAgent, Presenter {
         await this.after();
       };
       g.addEventListener("click", go);
-      g.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); void go(); } });
+      g.addEventListener("keydown", (e) => {
+        if (e.key !== "Enter" && e.key !== " ") return;
+        e.preventDefault();
+        e.stopPropagation(); // one keypress, one action
+        void go();
+      });
     });
     this.setScreen(el);
     const view = el.querySelector<HTMLElement>(".mapview")!;
@@ -689,13 +696,7 @@ export class App implements RunAgent, Presenter {
     };
     if (a.startsWith("slot.")) {
       const card = list[Number(a.slice(5)) - 1];
-      if (card) {
-        if (p) void this.tapCard(card.uid);
-        else {
-          this.sel = card.uid;
-          void this.tapCard(card.uid);
-        }
-      }
+      if (card) void this.tapCard(card.uid); // first press selects, second plays
       return;
     }
     switch (a) {
