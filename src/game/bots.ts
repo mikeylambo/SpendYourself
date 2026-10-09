@@ -5,14 +5,14 @@ import { CARDS } from "../data/cards.ts";
 import { EVENTS } from "../data/events.ts";
 import { FOES } from "../data/foes.ts";
 import { tuning } from "../data/tuning.ts";
-import { Combat } from "./combat.ts";
+import type { Combat } from "./combat.ts";
+import { cloneCombat } from "./preview.ts";
 import type { RunAgent, RunController } from "./run.ts";
 import type { MapNode } from "./state.ts";
-import type { Agent, CombatState, PickRequest, Presenter } from "./types.ts";
+import type { PickRequest } from "./types.ts";
 
 export type BotStyle = "balanced" | "spender" | "hoarder" | "randomWounds";
 
-const silent: Presenter = { emit: () => {} };
 const RARITY_VALUE: Record<string, number> = { C: 1, U: 2, R: 3, X: 0 };
 
 function cardValue(c: BodyCard): number {
@@ -38,7 +38,7 @@ function liveValue(e: Combat, c: BodyCard): number {
 export function incomingWounds(e: Combat): number {
   let n = e.s.selfPoison > 0 ? 1 : 0;
   for (const f of e.alive()) {
-    if (f.skip > 0) continue;
+    if (f.skip > 0 || e.diesToPoison(f)) continue;
     for (const a of f.intent) if (a.k === "atk") n += e.attackValue(f, a.n) * e.attackHits(f, a.x ?? 1);
   }
   return n;
@@ -82,14 +82,6 @@ function evaluate(e: Combat): number {
   return v;
 }
 
-function cloneCombat(e: Combat, agent: Agent): Combat {
-  const s = structuredClone(e.s) as CombatState;
-  // The map and history never change inside a fight: share them, copy what cards can touch.
-  const r = e.run;
-  const run = { ...r, deck: r.deck.map((d) => ({ ...d })), bones: [...r.bones], nextFight: { ...r.nextFight }, stats: { ...r.stats, devoured: [...r.stats.devoured] } };
-  const rng = new DeterministicRng((e.rng as DeterministicRng).state ?? 1);
-  return new Combat(s, run, rng, agent, silent);
-}
 
 export class Bot implements RunAgent {
   style: BotStyle;

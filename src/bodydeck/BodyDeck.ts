@@ -21,6 +21,8 @@ export interface BodyCard {
   held: number;
   /** Locked by an enemy Bind: unplayable this turn, still counts for might and coils. */
   bound: boolean;
+  /** Foe id that bound it (for the reason shown on the card). */
+  boundBy?: string;
   /** Protected from eat (and bind) this turn. */
   guarded: boolean;
   /** Can't be eaten for the rest of the fight (Ground). */

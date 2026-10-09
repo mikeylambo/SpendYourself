@@ -62,6 +62,7 @@ const ICON: Record<string, string> = {
   back: '<path d="M15 5 L8 12 L15 19"/>',
   weak: '<path d="M5 6 L12 13 L19 6"/><path d="M5 12 L12 19 L19 12"/>',
   thorns: '<path d="M4 20 L12 4 L20 20Z"/><path d="M8 13 L4 11 M16 13 L20 11"/>',
+  skull: '<path d="M6 11a6 6 0 1 1 12 0v3l-2 1v3H8v-3l-2-1z"/><circle cx="9.5" cy="11" r="1.3"/><circle cx="14.5" cy="11" r="1.3"/><path d="M11 18v2M13 18v2"/>',
   lock: '<rect x="5" y="11" width="14" height="10"/><path d="M8 11 V8 A4 4 0 0 1 16 8 V11"/>',
 };
 

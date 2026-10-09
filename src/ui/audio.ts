@@ -197,6 +197,7 @@ const CUES: Record<string, Cue> = {
   "map.move": (a) => a.drum(false),
   "ui.confirm": (a) => a.tone(640, 0.05, "triangle", 0.05),
   "ui.back": (a) => a.tone(420, 0.05, "triangle", 0.04),
+  "ui.move": (a) => a.tone(900, 0.02, "sine", 0.015),
   "fight.win": (a) => { a.tone(196, 0.5, "sine", 0.12); a.tone(294, 0.7, "sine", 0.09, 0, 0.15); },
   "run.death": (a) => { a.tone(98, 1.4, "sawtooth", 0.08, 40); a.noise(1.2, 500, 0.5, 0.2, "lowpass", 0, 80); },
   "bone.gain": (a) => { a.tone(880, 0.12, "triangle", 0.05); a.tone(1320, 0.18, "triangle", 0.04, 0, 0.06); },

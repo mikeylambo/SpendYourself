@@ -360,7 +360,7 @@ export class Combat {
     const s = this.s;
     let incoming = this.n("pending") + (s.selfPoison > 0 ? 1 : 0);
     for (const f of this.alive()) {
-      if (f.skip > 0 || f.coaxed) continue;
+      if (f.skip > 0 || f.coaxed || this.diesToPoison(f)) continue;
       for (const a of f.intent) if (a.k === "atk") incoming += this.attackValue(f, a.n) * this.attackHits(f, a.x ?? 1);
     }
     let landed = Math.max(0, incoming - this.body.block);
@@ -437,6 +437,21 @@ export class Combat {
     if (def.tgt && !this.alive().length) return false;
     if (def.can && !def.can(this.ctx(card, true))) return false;
     return true;
+  }
+
+  /** Why this card can't be played right now, in words (null when it can). */
+  whyNot(card: BodyCard): string | null {
+    if (this.s.over) return null;
+    if (this.busy) return "Wait for the enemy turn to finish.";
+    if (card.bound) return `Bound${card.boundBy ? ` by the ${FOES[card.boundBy]?.name ?? "enemy"}` : ""}: it can't be played this turn. It still counts for might.`;
+    if (this.s.lockPlays) return "You can't play more cards this turn.";
+    if (this.n("calm") > 0) return "Calm: no cards can be played this turn.";
+    const def = this.def(card);
+    const sac = (def.sac ?? 0) + (this.n("slime") ? 1 : 0);
+    if (sac > this.body.hand.length - 1) return `Needs ${sac} other card${sac > 1 ? "s" : ""} in hand to sacrifice${this.n("slime") ? " (slimed: +1)" : ""}.`;
+    if (def.tgt && !this.alive().length) return "No enemy to target.";
+    if (def.can && !def.can(this.ctx(card, true))) return def.why ?? "Its condition isn't met yet.";
+    return null;
   }
 
   // ---------- player actions ----------
@@ -591,6 +606,7 @@ export class Combat {
         if (!f.alive) break;
         wounds += await this.act(f, a);
       }
+      this.addN(`acted:${f.uid}`);
       f.weak = Math.max(0, f.weak - 1);
       f.mark = 0;
       f.coaxed = false;
@@ -717,6 +733,7 @@ export class Combat {
           if (!pool.length) break;
           const c = pool[Math.floor(this.rng.next() * pool.length)]!;
           c.bound = true;
+          c.boundBy = f.id;
           await this.emit("card.bind", { uid: c.uid, foe: f.uid });
         }
         return 0;
@@ -923,6 +940,11 @@ export class Combat {
     if (f.poison <= 0) return 0;
     const depth = this.run.molt === "venom" ? this.run.act - 1 : 0;
     return (f.poison + depth) * (this.s.flags.venomHeart ? 2 : 1);
+  }
+
+  /** Poison will finish this foe at the start of its turn, before it acts. */
+  diesToPoison(f: FoeState): boolean {
+    return f.alive && f.poison > 0 && this.poisonTick(f) >= f.hp;
   }
 
   poison(t: FoeState | undefined, n: number): void {

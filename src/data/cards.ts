@@ -78,7 +78,7 @@ C("card.thrash", "Thrash", "strike", "U", {
 C("card.rend", "Rend", "strike", "U", {
   tgt: true, f: "Sacrifice 2 at random; deal 8 + 3c",
   n: (k) => [8 + 3 * k.c], t: ([d]) => `Lose 2 cards at random. Deal ${d}.`,
-  can: (k) => k.e.body.hand.length >= 3,
+  why: "Needs 2 other cards in hand.", can: (k) => k.e.body.hand.length >= 3,
   run: (k, [d]) => {
     for (let i = 0; i < 2 && k.e.body.hand.length; i++) {
       const c = k.e.body.hand[Math.floor(k.e.rng.next() * k.e.body.hand.length)]!;
@@ -124,7 +124,7 @@ C("card.world_eater", "World Eater", "strike", "R", {
 C("card.last_scale", "Last Scale", "strike", "R", {
   tgt: true, f: "Playable only as your last card. Deal 20 + 5c; this card's wound can't kill you this turn",
   n: (k) => [20 + 5 * k.c], t: ([d]) => `Only as your last card. Deal ${d}. You can't die this turn.`,
-  can: (k) => k.e.body.hand.length === 1,
+  why: "Only as your last card.", can: (k) => k.e.body.hand.length === 1,
   run: (k, [d]) => { k.e.s.flags.spared = true; k.e.hit(k.t, d!); },
 });
 C("card.circle_strike", "Circle Strike", "strike", "R", {
@@ -217,7 +217,7 @@ C("card.flex", "Flex", "body", "C", {
 });
 C("card.regrow", "Regrow", "body", "C", {
   f: "Put a card from your discard pile into your hand", t: () => `Return a card from your discard pile to your hand.`,
-  can: (k) => k.e.body.discard.length > 0,
+  why: "Needs a card in your discard pile.", can: (k) => k.e.body.discard.length > 0,
   run: async (k) => {
     const b = k.e.body;
     const c = await k.e.chooseOne([...b.discard], "regrow");
@@ -465,7 +465,7 @@ V("venom.bile_wall", "Bile Wall", "guard", "U", {
 });
 V("venom.digest_whole", "Digest Whole", "rite", "U", {
   f: "Shed a card from your hand; Poison 5 to all", n: (k) => [5 + k.c], t: ([p]) => `Shed a card from your hand. Poison ${p} on all enemies.`,
-  can: (k) => k.e.body.hand.length >= 2,
+  why: "Needs another card in hand.", can: (k) => k.e.body.hand.length >= 2,
   run: async (k, [p]) => { const c = await k.e.chooseOne(others(k), "shed"); if (c) shedFromHand(k.e.body, c.uid); for (const f of k.e.alive()) k.e.poison(f, p!); },
 });
 V("venom.husk_eater", "Husk Eater", "strike", "U", {
@@ -482,7 +482,7 @@ V("venom.swell", "Swell", "body", "U", {
 });
 V("venom.carrion", "Carrion", "body", "U", {
   f: "Return the last husk card you devoured to your hand from your deck", t: () => `Pull your last devoured husk into your hand.`,
-  can: (k) => !!k.e.run.lastDevoured,
+  why: "Needs a devoured husk this run.", can: (k) => !!k.e.run.lastDevoured,
   run: (k) => {
     const b = k.e.body;
     const id = k.e.run.lastDevoured;
@@ -556,7 +556,7 @@ T("tide.slip", "Slip", "guard", "C", {
   f: "Block 3 + c if your hand is 3 or fewer, else Block 1", n: (k) => [small(k) ? 3 + k.c : 1], t: ([b]) => `Block ${b}. (3 + coil at 3 cards or fewer.)`, run: (k, [b]) => k.e.gainBlock(b!),
 });
 T("tide.salt", "Salt", "body", "C", {
-  f: "Return a card from discard to hand; it gains +1 coil", t: () => `Return a card from your discard pile. It coils +1.`, can: (k) => k.e.body.discard.length > 0,
+  f: "Return a card from discard to hand; it gains +1 coil", t: () => `Return a card from your discard pile. It coils +1.`, why: "Needs a card in your discard pile.", can: (k) => k.e.body.discard.length > 0,
   run: async (k) => {
     const b = k.e.body;
     const c = await k.e.chooseOne([...b.discard], "regrow");
@@ -691,7 +691,7 @@ S("storm.thunderclap", "Thunderclap", "strike", "U", { shed: true, f: "Deal 2c +
 S("storm.eye", "Eye of the Storm", "guard", "U", { shed: true, f: "Block 3; cards in hand coil +1 more at end of turn this fight. Shed", n: (k) => [3 + k.c], t: ([b]) => `Block ${b}. This fight, held cards coil 1 more each turn. Shed.`, run: (k, [b]) => { k.e.gainBlock(b!); k.e.addN("coilBonus", 1); } });
 S("storm.discharge", "Discharge", "strike", "U", {
   tgt: true, f: "Reset another card's coil to 0; deal 6 per coil removed", n: (k) => [6 + k.c], t: ([d]) => `Drain another card's coil. Deal ${d} per coil.`,
-  can: (k) => others(k).some((c) => c.coil > 0) || k.e.body.hand.length > 1,
+  why: "Needs another card in hand.", can: (k) => others(k).some((c) => c.coil > 0) || k.e.body.hand.length > 1,
   run: async (k, [d]) => { const c = await k.e.chooseOne(others(k).filter((x) => x.coil > 0), "drain"); if (c) { const n = c.coil; c.coil = 0; k.e.hit(k.t, d! * n); } },
 });
 S("storm.long_wait", "Long Wait", "strike", "U", { tgt: true, f: "Deal 1 + 3 per turn this card has been in your hand (no cap)", n: (k) => [1 + 3 * k.card.held], t: ([d]) => `Deal ${d}. +3 for every turn you held it.`, run: (k, [d]) => void k.e.hit(k.t, d!) });
@@ -714,7 +714,7 @@ S("storm.calm_before", "Calm Before", "rite", "R", {
 });
 S("storm.final_strike", "Final Strike", "strike", "R", {
   tgt: true, f: "Play only as your last card: deal 5 × total coil spent this fight", n: (k) => [5 * (k.e.s.coilSpent + k.c)], t: ([d]) => `Only as your last card. Deal ${d} (5 per coil spent this fight).`,
-  can: (k) => k.e.body.hand.length === 1, run: (k, [d]) => void k.e.hit(k.t, d!),
+  why: "Only as your last card.", can: (k) => k.e.body.hand.length === 1, run: (k, [d]) => void k.e.hit(k.t, d!),
 });
 
 export const CARDS: Record<string, CardDef> = Object.fromEntries(list.map((c) => [c.id, c]));

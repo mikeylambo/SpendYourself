@@ -35,6 +35,8 @@ export interface CardDef {
   t: (v: number[], k: CardCtx) => string;
   run: (k: CardCtx, v: number[]) => void | Promise<void>;
   can?: (k: CardCtx) => boolean;
+  /** Why `can` fails, shown when you tap the card. */
+  why?: string;
   /** Never offered as a reward or sold. */
   special?: boolean;
 }

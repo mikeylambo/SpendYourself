@@ -9,6 +9,7 @@ import { tuning } from "../data/tuning.ts";
 import type { Combat } from "../game/combat.ts";
 import { LAST_ACT, newRun, RunController, type RunAgent } from "../game/run.ts";
 import type { MapNode, RunState } from "../game/state.ts";
+import { previewPlay, type PlayPreview } from "../game/preview.ts";
 import type { Act, FoeState, GameEvent, MoltId, PickRequest, Presenter } from "../game/types.ts";
 import { bloomCoda, boneGlyph, creatureSVG, icon, ringGlyph, SVG_DEFS, uroRing } from "./art.ts";
 import { AudioEngine } from "./audio.ts";
@@ -69,6 +70,16 @@ export class App implements RunAgent, Presenter {
   private overlayBack: (() => void) | null = null;
   private picking: PickState | null = null;
   private sel: number | null = null;
+  /** What the selected card would do (damage and block previews). */
+  private pv: PlayPreview | null = null;
+  private pvKey = "";
+  /** Wounds landed this enemy turn, by attacker, for the wound banner. */
+  private woundLog = new Map<string, number>();
+  /** End turn was pressed once into a lethal forecast; a second press within the window ends it. */
+  private endArmed = 0;
+  /** Card under the finger while sliding across the hand. */
+  private peek: number | null = null;
+  private slid = false;
   private removal = new Map<number, string>();
   private deaths = new Map<number, number>();
   private fightEl: HTMLElement | null = null;
@@ -536,6 +547,7 @@ export class App implements RunAgent, Presenter {
     if (!el || !c || !run) return;
     const s = c.s;
     const b = c.body;
+    this.refreshPreview(c);
     // bar
     const barSlot = el.querySelector(".bar-slot")!;
     barSlot.innerHTML = this.barHTML(false);
@@ -558,11 +570,11 @@ export class App implements RunAgent, Presenter {
     const fc = c.forecast();
     if (fc.incoming > 0) this.tip("forecast");
     el.querySelector(".core .left")!.innerHTML =
-      (fc.incoming > 0 ? `<span class="plate forecast${fc.lethal ? " lethal" : ""}${fc.landed === 0 ? " safe" : ""}" title="Wounds that land when you end your turn">${icon("claw")}${fc.landed === 0 ? "0" : `−${fc.landed}`}${fc.lethal ? `<em>lethal</em>` : ""}</span>` : "") +
+      (fc.incoming > 0 ? `<span class="plate forecast${fc.lethal ? " lethal" : ""}${fc.landed === 0 ? " safe" : ""}" title="Wounds that land when you end your turn">${icon("claw")}${fc.landed === 0 ? "0" : `−${fc.landed}`}${this.pv && this.pv.landed < fc.landed ? `<span class="pv-arrow">→</span>${this.pv.landed === 0 ? "0" : `−${this.pv.landed}`}` : ""}${fc.lethal && !(this.pv && !this.pv.lethal) ? `<em>lethal</em>` : ""}</span>` : "") +
       (b.block ? `<span class="plate">${icon("shield")}${b.block >= 99 ? "∞" : b.block}</span>` : "") +
       (big && c.bigActive() ? `<span class="plate big" title="Big: every hit lands ${c.bigExtra()} more wound${c.bigExtra() > 1 ? "s" : ""}">${icon("scale")}+${c.bigExtra()}</span>` : "") +
       (s.selfPoison ? `<span class="plate pz">${icon("drop")}${s.selfPoison}</span>` : "");
-    el.querySelector(".core .right")!.innerHTML = `<button class="pile" data-pile="draw" title="Draw pile">${icon("draw")}${b.draw.length}</button><button class="pile" data-pile="discard" title="Discard pile">${icon("discard")}${b.discard.length}</button><span class="pile" title="Max hand">${icon("scale")}${b.hand.length}/${b.maxHand}</span>`;
+    el.querySelector(".core .right")!.innerHTML = `<button class="pile" data-pile="draw" title="Draw pile">${icon("draw")}${b.draw.length}</button><button class="pile" data-pile="discard" title="Discard pile">${icon("discard")}${b.discard.length}</button><span class="pile hand-count" title="Hand ${b.hand.length} of ${b.maxHand}. Big at ${b.bigAt} cards; Heavy at max hand ${b.heavyAt}.">${icon("scale")}${b.hand.length}/${b.maxHand}${this.meterHTML(b.hand.length, b.maxHand, b.bigAt)}</span>`;
     el.querySelectorAll<HTMLElement>("[data-pile]").forEach((p) => p.addEventListener("click", () => this.showPile(p.dataset.pile as "draw" | "discard")));
     if (big && !this.persist.taught("tip.big")) this.audio.play("size.big");
     if (big) this.tip("big");
@@ -574,6 +586,55 @@ export class App implements RunAgent, Presenter {
     end.disabled = !!s.over || c.busy || !!this.picking;
     this.renderBanner(el, c);
     this.audio.setBody(b.hand.length, b.maxHand);
+  }
+
+  /** One line under the enlarged card: what playing it would do. */
+  private previewSummary(c: Combat): string {
+    const pv = this.pv;
+    if (!pv) return "";
+    const parts: string[] = [];
+    if (pv.won) parts.push(`${icon("skull")}Ends the fight`);
+    else {
+      for (const f of c.alive()) {
+        const after = pv.hp.get(f.uid);
+        if (after === undefined || after >= f.hp) continue;
+        const name = escapeHtml(FOES[f.id]!.name);
+        parts.push(pv.dead.has(f.uid) ? `${icon("skull")}Kills ${name}` : `${name} ${f.hp}→${after}`);
+      }
+    }
+    const fc = c.forecast();
+    if (pv.landed < fc.landed) parts.push(`${icon("claw")}−${fc.landed}→${pv.landed ? `−${pv.landed}` : "0"}`);
+    if (!parts.length) return "";
+    return `<div class="pv-result">${parts.join("<span>·</span>")}${pv.approx ? `<span title="Random or chosen effects: a likely outcome">≈</span>` : ""}</div>`;
+  }
+
+  /** Hand fill with a gold tick where Big starts. */
+  private meterHTML(n: number, max: number, bigAt: number): string {
+    const cells = Math.min(40, Math.max(max, bigAt));
+    let out = "";
+    for (let i = 0; i < cells; i++) out += `<i class="${i < n ? "on" : ""}${i === bigAt - 1 ? " big" : ""}${i >= max ? " over" : ""}"></i>`;
+    return `<span class="meter" aria-hidden="true">${out}</span>`;
+  }
+
+  private refreshPreview(c: Combat): void {
+    const sel = this.sel;
+    const card = sel === null ? undefined : c.body.hand.find((x) => x.uid === sel);
+    if (!card || this.picking || c.busy || c.s.over || !c.canPlay(card)) {
+      this.pv = null;
+      this.pvKey = "";
+      return;
+    }
+    const target = CARDS[card.id]!.tgt ? c.target()?.uid : undefined;
+    const key = `${card.uid}:${target}:${c.s.turn}:${c.s.playedThisTurn}:${c.body.hand.length}:${c.body.block}`;
+    if (key === this.pvKey) return;
+    this.pvKey = key;
+    this.pv = null;
+    void previewPlay(c, card.uid, target).then((r) => {
+      if (this.pvKey === key && this.combat === c) {
+        this.pv = r;
+        this.updateFight();
+      }
+    });
   }
 
   private intentHTML(c: Combat, f: FoeState, acts: Act[], next = false): string {
@@ -611,6 +672,9 @@ export class App implements RunAgent, Presenter {
     wrap.querySelectorAll<HTMLElement>(".foe").forEach((n) => { if (!keep.has(Number(n.dataset.uid))) n.remove(); });
     const target = c.target();
     const lens = c.has("bone.lens") || this.s.intentDetail;
+    // Foes act left to right; number them when more than one will act.
+    const actors = c.alive().filter((f) => f.skip <= 0 && !c.diesToPoison(f) && f.intent.some((a) => a.k !== "rest"));
+    const order = new Map(actors.map((f, i) => [f.uid, i + 1]));
     for (const f of shown) {
       let n = wrap.querySelector<HTMLElement>(`.foe[data-uid="${f.uid}"]`);
       const def = FOES[f.id]!;
@@ -618,8 +682,8 @@ export class App implements RunAgent, Presenter {
         n = h(`<button class="foe" data-uid="${f.uid}" data-tier="${def.tier}" tabindex="-1">
           <span class="name">${escapeHtml(def.name)}</span>
           <div class="intent"></div>
-          <div class="art">${creatureSVG(f.id)}<div class="ring"></div></div>
-          <div class="hpbar"><i></i><b></b></div>
+          <div class="art">${creatureSVG(f.id)}<div class="ring"></div><span class="kill" title="This play kills it">${icon("skull")}</span></div>
+          <div class="hpbar"><i></i><b></b><u></u></div>
           <div class="hpnum"></div>
           <div class="status"></div>
         </button>`);
@@ -642,15 +706,27 @@ export class App implements RunAgent, Presenter {
       const crack = n.querySelector<SVGGElement>(".crack");
       if (crack) crack.style.display = f.phase === 2 ? "" : "none";
       const intent = n.querySelector(".intent")!;
-      intent.innerHTML = f.alive ? (f.skip > 0 ? `<span class="act">${icon("rest")}</span>` : this.intentHTML(c, f, f.intent)) + (f.alive && (lens || f.revealed > 0) ? this.intentHTML(c, f, c.peekIntent(f), true) : "") : "";
+      const ord = actors.length > 1 && order.has(f.uid) ? `<i class="ord" title="Acts ${order.get(f.uid)}${["st", "nd", "rd"][order.get(f.uid)! - 1] ?? "th"}">${order.get(f.uid)}</i>` : "";
+      intent.innerHTML = f.alive ? ord + (f.skip > 0 ? `<span class="act">${icon("rest")}</span>` : this.intentHTML(c, f, f.intent)) + (f.alive && (lens || f.revealed > 0) ? this.intentHTML(c, f, c.peekIntent(f), true) : "") : "";
       n.querySelector<HTMLElement>(".hpbar i")!.style.width = `${Math.max(0, (f.hp / f.max) * 100)}%`;
       const pz = Math.min(f.hp, c.poisonTick(f));
       const bEl = n.querySelector<HTMLElement>(".hpbar b")!;
       bEl.style.left = `${Math.max(0, ((f.hp - pz) / f.max) * 100)}%`;
       bEl.style.right = `${100 - Math.max(0, (f.hp / f.max) * 100)}%`;
-      n.querySelector(".hpnum")!.innerHTML = `${Math.max(0, f.hp)}/${f.max}${f.block ? ` <span>${icon("shield").replace("<svg", '<svg style="width:14px;height:14px"')}${f.block}</span>` : ""}`;
+      const pvHp = f.alive ? this.pv?.hp.get(f.uid) : undefined;
+      const hurt = pvHp !== undefined && pvHp < f.hp;
+      const uEl = n.querySelector<HTMLElement>(".hpbar u")!;
+      uEl.style.display = hurt ? "" : "none";
+      if (hurt) {
+        uEl.style.left = `${(pvHp! / f.max) * 100}%`;
+        uEl.style.right = `${100 - (f.hp / f.max) * 100}%`;
+      }
+      n.classList.toggle("will-die", !!this.pv?.dead.has(f.uid));
+      n.classList.toggle("doomed", c.diesToPoison(f));
+      n.querySelector(".hpnum")!.innerHTML = `${Math.max(0, f.hp)}${hurt ? `<em class="pvhp">→${pvHp}${this.pv!.approx ? "?" : ""}</em>` : ""}/${f.max}${f.block ? ` <span>${icon("shield").replace("<svg", '<svg style="width:14px;height:14px"')}${f.block}</span>` : ""}`;
       n.querySelector(".status")!.innerHTML = [
         f.poison ? `<span class="pz" title="Poison: ${c.poisonTick(f)} damage at the start of its turn">${icon("drop")}${f.poison}${f.slowRot ? "∞" : ""}</span>` : "",
+        c.diesToPoison(f) ? `<span class="doom" title="Poison kills it before it acts">${icon("skull")}next turn</span>` : "",
         f.weak ? `<span title="Weakened">${icon("weak")}${f.weak}</span>` : "",
         f.str ? `<span title="Strength">${icon("buff")}${f.str}</span>` : "",
         f.mark ? `<span title="Marked">+${f.mark}</span>` : "",
@@ -664,6 +740,7 @@ export class App implements RunAgent, Presenter {
     const hand = c.body.hand;
     const zone = el.querySelector<HTMLElement>(".handzone")!;
     const wrap = zone.querySelector<HTMLElement>(".hand")!;
+    this.wirePeek(wrap);
     const W = zone.clientWidth || innerWidth;
     const H = zone.clientHeight || 200;
     const compact = W < 700 || H < 230;
@@ -711,6 +788,7 @@ export class App implements RunAgent, Presenter {
       node.style.zIndex = String(i + 1);
       node.style.transform = `rotate(${isSel ? 0 : rot}deg)`;
       node.classList.toggle("sel", isSel);
+      node.classList.toggle("peek", this.peek === card.uid);
       node.classList.toggle("picking", !!picking);
       node.classList.toggle("picked", picked);
       node.classList.toggle("unplayable", !picking && !c.canPlay(card) && !c.busy && !c.s.over);
@@ -718,8 +796,16 @@ export class App implements RunAgent, Presenter {
     });
     // preview of the selected card
     const pv = zone.querySelector<HTMLElement>(".preview")!;
-    const selCard = hand.find((x) => x.uid === this.sel);
-    pv.innerHTML = selCard && compact && !picking ? cardHTML(selCard, c, { inHand: true }) : "";
+    const peekCard = this.peek !== null ? hand.find((x) => x.uid === this.peek) : undefined;
+    const selCard = peekCard ?? (compact && !picking ? hand.find((x) => x.uid === this.sel) : undefined);
+    pv.innerHTML = selCard ? cardHTML(selCard, c, { inHand: true }) + (selCard.uid === this.sel && !peekCard ? this.previewSummary(c) : "") : "";
+    // Sit the enlarged card over its place in the fan, inside the screen.
+    const selIdx = selCard ? hand.indexOf(selCard) : -1;
+    if (selIdx >= 0) {
+      const t = n > 1 ? selIdx / (n - 1) : 0.5;
+      const half = Math.min(105, W * 0.19) + 8;
+      pv.style.left = `${Math.min(W - half, Math.max(half, W / 2 - span / 2 + span * t))}px`;
+    }
     // Uro's body behind the scales
     this.drawBody(zone.querySelector("svg.body")!, pts, c, W, H, cw);
   }
@@ -759,18 +845,66 @@ export class App implements RunAgent, Presenter {
       </g>`;
   }
 
+  /** Press and slide across the hand to enlarge the card under your finger; let go to pick it up. */
+  private wirePeek(wrap: HTMLElement): void {
+    if (wrap.dataset.peek) return;
+    wrap.dataset.peek = "1";
+    let x0 = 0;
+    let id = -1;
+    let active = false;
+    const cardAt = (x: number, y: number): number | null => {
+      for (const node of document.elementsFromPoint(x, y)) {
+        const card = (node as HTMLElement).closest?.<HTMLElement>(".hand .card:not([data-gone])");
+        if (card) return Number(card.dataset.uid);
+      }
+      return null;
+    };
+    wrap.addEventListener("pointerdown", (e) => { x0 = e.clientX; id = e.pointerId; active = false; this.slid = false; });
+    wrap.addEventListener("pointermove", (e) => {
+      if (e.pointerId !== id || (e.pointerType === "mouse" && !(e.buttons & 1))) return;
+      if (!active) {
+        if (Math.abs(e.clientX - x0) < 12 || this.picking) return;
+        active = true;
+        this.slid = true;
+        try { wrap.setPointerCapture(e.pointerId); } catch { /* not capturable */ }
+      }
+      const uid = cardAt(e.clientX, e.clientY);
+      if (uid !== null && uid !== this.peek && this.fightEl && this.combat) {
+        this.peek = uid;
+        this.audio.play("ui.move");
+        this.renderHand(this.fightEl, this.combat);
+      }
+    });
+    const end = (e: PointerEvent) => {
+      if (e.pointerId !== id) return;
+      id = -1;
+      if (!active) return;
+      active = false;
+      if (this.peek !== null) this.sel = this.peek;
+      this.peek = null;
+      this.updateFight();
+      // The click that follows a slide lands on the hand, not a card; clear the flag after it.
+      setTimeout(() => { this.slid = false; }, 50);
+    };
+    wrap.addEventListener("pointerup", end);
+    wrap.addEventListener("pointercancel", end);
+  }
+
   private wireCard(node: HTMLElement, uid: number): void {
     let timer = 0;
     let long = false;
     node.addEventListener("pointerdown", () => {
       long = false;
-      timer = window.setTimeout(() => { long = true; this.inspect(uid); }, 480);
+      timer = window.setTimeout(() => { if (!this.slid) { long = true; this.inspect(uid); } }, 480);
     });
     const cancel = () => clearTimeout(timer);
     node.addEventListener("pointerup", cancel);
     node.addEventListener("pointerleave", cancel);
     node.addEventListener("contextmenu", (e) => { e.preventDefault(); this.inspect(uid); });
-    node.addEventListener("click", () => { if (!long) void this.tapCard(uid); });
+    node.addEventListener("click", () => {
+      if (this.slid) { this.slid = false; return; }
+      if (!long) void this.tapCard(uid);
+    });
   }
 
   private renderBanner(el: HTMLElement, c: Combat): void {
@@ -782,7 +916,8 @@ export class App implements RunAgent, Presenter {
     const text = p.req.kind === "wound" ? `Choose ${n} to lose` : p.req.kind === "sacrifice" ? `Sacrifice ${n}` : PROMPTS[p.req.prompt] ?? "Choose";
     const needConfirm = (this.needConfirm() && p.req.kind !== "choose") || !!p.req.optional;
     const ready = p.selected.length === n || !!p.req.optional;
-    const banner = h(`<div class="banner ${p.req.kind === "choose" ? "" : "wound"}">${p.req.kind === "choose" ? "" : icon(p.req.kind === "wound" ? "claw" : "sacrifice")}<span>${text}${p.selected.length && n > 1 && !p.req.optional ? ` · ${p.selected.length}/${n}` : ""}</span>${needConfirm && ready ? `<button class="btn" data-confirm>${icon("check")}</button>` : ""}</div>`);
+    const from = p.req.kind === "wound" && this.woundLog.size ? `<small>${[...this.woundLog].map(([k, v]) => `${escapeHtml(k)} ${v}`).join(" · ")}</small>` : "";
+    const banner = h(`<div class="banner ${p.req.kind === "choose" ? "" : "wound"}">${p.req.kind === "choose" ? "" : icon(p.req.kind === "wound" ? "claw" : "sacrifice")}<span>${text}${p.selected.length && n > 1 && !p.req.optional ? ` · ${p.selected.length}/${n}` : ""}${from}</span>${needConfirm && ready ? `<button class="btn" data-confirm>${icon("check")}</button>` : ""}</div>`);
     banner.querySelector("[data-confirm]")?.addEventListener("click", () => this.resolvePick());
     zone.appendChild(banner);
   }
@@ -809,6 +944,8 @@ export class App implements RunAgent, Presenter {
     if (c.busy || c.s.over) return;
     const card = c.body.hand.find((x) => x.uid === uid);
     if (!card) return;
+    const why = c.whyNot(card);
+    if (why && !c.busy) this.toast(why);
     if (this.sel === uid) {
       if (!c.canPlay(card)) {
         this.audio.play("ui.back");
@@ -848,6 +985,19 @@ export class App implements RunAgent, Presenter {
   private async endTurn(): Promise<void> {
     const c = this.combat;
     if (!c || c.busy || c.s.over || this.picking) return;
+    const fc = c.forecast();
+    if (fc.lethal && c.body.hand.some((x) => c.canPlay(x)) && this.endArmed < performance.now()) {
+      this.endArmed = performance.now() + 3000;
+      const btn = this.fightEl?.querySelector<HTMLElement>("[data-end]");
+      if (btn) {
+        btn.textContent = "Lethal · end anyway?";
+        btn.classList.add("warn");
+        setTimeout(() => { btn.textContent = "End turn"; btn.classList.remove("warn"); }, 3000);
+      }
+      this.audio.play("ui.back");
+      return;
+    }
+    this.endArmed = 0;
     this.sel = null;
     this.audio.play("ui.confirm");
     const p = c.endTurn();
@@ -903,7 +1053,8 @@ export class App implements RunAgent, Presenter {
     const card = [...c.body.hand, ...c.body.discard, ...c.body.draw].find((x) => x.uid === uid);
     if (!card) return;
     const inHand = c.body.hand.includes(card);
-    const el = h(`<div class="overlay"><div class="inspect">${cardHTML(card, c, { inHand })}<div class="math">${breakdownHTML(card, c, inHand)}${this.glossaryHTML(CARDS[card.id]!.t(c.values(CARDS[card.id]!, c.ctx(card, inHand)), c.ctx(card, inHand)) + " " + CARDS[card.id]!.f)}</div></div><button class="btn" data-nav data-autofocus data-close>${icon("back")}</button></div>`);
+    const why = inHand ? c.whyNot(card) : null;
+    const el = h(`<div class="overlay"><div class="inspect">${cardHTML(card, c, { inHand })}<div class="math">${why ? `<p class="why">${icon(card.bound ? "knot" : "lock")}${escapeHtml(why)}</p>` : ""}${breakdownHTML(card, c, inHand)}${this.glossaryHTML(CARDS[card.id]!.t(c.values(CARDS[card.id]!, c.ctx(card, inHand)), c.ctx(card, inHand)) + " " + CARDS[card.id]!.f)}</div></div><button class="btn" data-nav data-autofocus data-close>${icon("back")}</button></div>`);
     const close = () => this.closeOverlay();
     el.addEventListener("click", close);
     this.openOverlay(el, close);
@@ -1009,7 +1160,19 @@ export class App implements RunAgent, Presenter {
         f?.classList.add("acting");
         return wait(this.ms(300)).then(() => { f?.classList.remove("acting"); });
       }
+      case "enemy.turn":
+        this.woundLog.clear();
+        return;
+      case "poison.self":
+        if (this.woundLog) this.woundLog.set("Poison", (this.woundLog.get("Poison") ?? 0) + 1);
+        return;
       case "enemy.attack": {
+        if (typeof ev.landed === "number" && ev.landed > 0) {
+          const name = FOES[this.combat?.s.foes.find((x) => x.uid === ev.uid)?.id ?? ""]?.name ?? "Enemy";
+          this.woundLog.set(name, (this.woundLog.get(name) ?? 0) + ev.landed);
+          const fe = foeEl(ev.uid);
+          if (fe) { fe.classList.remove("struck"); void fe.offsetWidth; fe.classList.add("struck"); }
+        }
         const core = el?.querySelector<HTMLElement>(".might");
         if (core && ev.landed) {
           this.floatAt(core, `−${ev.landed}`, "wound");
@@ -1045,10 +1208,18 @@ export class App implements RunAgent, Presenter {
         this.updateFight();
         return wait(this.ms(160));
       case "turn.start":
+        if (typeof ev.turn === "number" && ev.turn >= 2) this.turnMark(ev.turn);
         this.updateFight();
         if (this.run?.screen.kind === "combat") void this.save();
         return;
       case "card.coil":
+        el?.querySelectorAll<HTMLElement>(".hand .card:not([data-gone])").forEach((n) => {
+          n.classList.remove("coilpop");
+          void n.offsetWidth;
+          n.classList.add("coilpop");
+        });
+        this.updateFight();
+        return;
       case "card.coil.max":
       case "card.draw":
       case "block.gain":
@@ -1081,6 +1252,15 @@ export class App implements RunAgent, Presenter {
         this.toast(BONES[ev.id as string]?.name ?? "");
         return;
     }
+  }
+
+  private turnMark(turn: number): void {
+    const foes = this.fightEl?.querySelector(".foes");
+    if (!foes) return;
+    foes.querySelector(".turnmark")?.remove();
+    const m = h(`<div class="turnmark">Turn ${turn}</div>`);
+    foes.appendChild(m);
+    setTimeout(() => m.remove(), this.ms(1300));
   }
 
   private floatAt(target: HTMLElement, html: string, cls: string): void {
@@ -1180,12 +1360,18 @@ export class App implements RunAgent, Presenter {
       f.str ? `Strength +${f.str}` : "",
       f.thorns ? "Bristling" : "",
     ].filter(Boolean).join(" · ");
+    const pat = f.phase === 2 && def.phase2 ? def.phase2.pattern : def.pattern;
+    const acted = c.n(`acted:${f.uid}`);
+    const patternHTML = pat.length < 2 || f.id === "boss.tail" ? "" : acted >= pat.length || lens
+      ? `<p><b>Pattern:</b> ${pat.map((i) => escapeHtml(words(i))).join(" → ")}, then repeats.</p>`
+      : `<p class="dim">Watch ${pat.length - acted} more turn${pat.length - acted > 1 ? "s" : ""} to learn its pattern.</p>`;
     const el = h(`<div class="overlay"><div class="inspect foe-inspect">
       <div class="foe-plate">${creatureSVG(f.id)}</div>
       <div class="math"><h2>${escapeHtml(def.name)}</h2>
         <p>${Math.max(0, f.hp)} / ${f.max} health${status ? ` · ${escapeHtml(status)}` : ""}</p>
         <p><b>Next:</b> ${escapeHtml(f.skip ? "Skips its move" : words(f.intent))}</p>
         ${lens ? `<p><b>Then:</b> ${escapeHtml(words(c.peekIntent(f)))}</p>` : ""}
+        ${patternHTML}
         ${def.onDeath === "wasp" ? "<p>When one dies, the rest grow stronger.</p>" : def.onDeath === "split" ? "<p>Splits in two when it dies.</p>" : def.onDeath === "choir" ? "<p>Killing a head makes the others stronger.</p>" : ""}
         ${f.id === "boss.tail" ? "<p>It plays a copy of your deck.</p>" : ""}
       </div></div><button class="btn" data-nav data-autofocus data-close>${icon("back")}</button></div>`);
