@@ -113,6 +113,8 @@ export interface Settings {
   undo: boolean;
   /** Which thumb reaches End turn. */
   hand: "right" | "left";
+  /** Name shown on leaderboards. */
+  playerName: string;
   haptics: boolean;
   tips: boolean;
 }
@@ -131,6 +133,7 @@ export const defaultSettings: Settings = {
   halftone: false,
   undo: false,
   hand: "right",
+  playerName: "",
   haptics: true,
   tips: true,
 };
@@ -221,17 +224,4 @@ export function errorLog(): string[] {
   } catch {
     return [];
   }
-}
-
-// ---------- Daily leaderboard (foundation) ----------
-/** Where Daily Descent results go. Unset: nothing is sent. Set VITE_LEADERBOARD_URL at build time to turn it on. */
-const LEADERBOARD = (import.meta.env?.VITE_LEADERBOARD_URL as string | undefined) ?? "";
-
-export interface DailyResult { date: string; molt: string; win: boolean; row: number; seed: string }
-
-export async function submitDaily(r: DailyResult): Promise<void> {
-  if (!LEADERBOARD) return;
-  try {
-    await fetch(LEADERBOARD, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(r), keepalive: true });
-  } catch { /* offline: the result is still in your history */ }
 }

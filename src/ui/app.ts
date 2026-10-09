@@ -17,7 +17,8 @@ import { AudioEngine } from "./audio.ts";
 import { PaperPass } from "./paper.ts";
 import { breakdownHTML, cardHTML, escapeHtml, previewCombat, staticCardHTML } from "./cardView.ts";
 import { focusFirst, navMove, SemanticInput, type Action } from "./input.ts";
-import { errorLog, Persistence, submitDaily, type Meta, type Settings } from "./meta.ts";
+import { errorLog, Persistence, type Meta, type Settings } from "./meta.ts";
+import { fetchDaily, leaderboardOn, submitDaily } from "./leaderboard.ts";
 import CHANGELOG from "../../CHANGELOG.md?raw";
 
 const ACT_NAMES: Record<number, string> = { 1: "Topsoil", 2: "The Roots", 3: "The Deep Water" };
@@ -251,6 +252,7 @@ export class App implements RunAgent, Presenter {
         <div class="menu">
           ${live ? `<button class="btn solid" data-nav data-autofocus data-act="continue">Continue<span class="sub">${live.daily ? "Daily · " : ""}${ACT_NAMES[live.act]} · ${live.row + 1}</span></button>` : ""}
           <button class="btn ${live ? "" : "solid"}" data-nav ${live ? "" : "data-autofocus"} data-act="begin">${meta.runs ? "Descend" : "Begin"}</button>
+          ${dailyOpen && leaderboardOn() ? `<button class="btn ghost" data-nav data-act="board">Today's board</button>` : ""}
           ${dailyOpen ? `<button class="btn" data-nav data-act="daily">Daily Descent<span class="sub">${meta.daily[today] ? `Today: ${meta.daily[today]!.win ? "won" : `reached ${meta.daily[today]!.row}`}` : today}</span></button>` : ""}
           <button class="btn ghost" data-nav data-act="how">How to play</button>
           ${meta.runs ? `<button class="btn ghost" data-nav data-act="library">Library &amp; history</button>` : ""}
@@ -274,8 +276,13 @@ export class App implements RunAgent, Presenter {
       if (live && !(await this.confirmAbandon(el))) return;
       await fresh();
       const molt = MOLTS[hashDay(today) % MOLTS.length]!;
+      if (leaderboardOn() && !this.s.playerName) {
+        const name = prompt("Name for the Daily leaderboard (leave empty to play unranked)", "");
+        if (name) { this.s.playerName = name.replace(/[^\p{L}\p{N} _.-]/gu, "").trim().slice(0, 16); await this.persist.saveSettings(); }
+      }
       this.startRun(newRun({ seed: `DAILY-${today}`, molt, onboarding: false, daily: today }));
     });
+    el.querySelector('[data-act="board"]')?.addEventListener("click", () => { this.ui(); void this.showDailyBoard(today); });
     el.querySelector('[data-act="how"]')!.addEventListener("click", () => { this.ui(); this.showHowTo(() => this.showTitle()); });
     el.querySelector('[data-act="library"]')?.addEventListener("click", () => { this.ui(); this.showLibrary(); });
     el.querySelector('[data-act="settings"]')!.addEventListener("click", () => { this.ui(); this.showSettings(() => this.showTitle()); });
@@ -596,6 +603,19 @@ export class App implements RunAgent, Presenter {
       try { await navigator.clipboard.writeText(report); (ev.currentTarget as HTMLElement).textContent = "Copied"; } catch { el.querySelector<HTMLTextAreaElement>("textarea")!.select(); }
     });
     this.openOverlay(el, () => this.closeOverlay());
+  }
+
+  /** Today's Daily Descent standings from the shared leaderboard. */
+  private async showDailyBoard(date: string): Promise<void> {
+    const el = h(`<div class="overlay"><h2>Daily Descent · ${escapeHtml(date)}</h2><div class="board-list"><p class="lines">Loading…</p></div><button class="btn" data-nav data-autofocus data-close>${icon("back")}</button></div>`);
+    el.querySelector("[data-close]")!.addEventListener("click", () => this.closeOverlay());
+    this.openOverlay(el, () => this.closeOverlay());
+    const rows = await fetchDaily(date);
+    const list = el.querySelector(".board-list")!;
+    if (!rows) { list.innerHTML = `<p class="lines">Couldn't reach the leaderboard. Your result is kept in your history.</p>`; return; }
+    if (!rows.length) { list.innerHTML = `<p class="lines">No one has finished today's descent yet.</p>`; return; }
+    const me = this.s.playerName;
+    list.innerHTML = rows.map((r, i) => `<div class="board-row${r.player === me ? " me" : ""}"><b>${i + 1}</b><span>${escapeHtml(r.player)}</span><span>${r.win ? "Won" : `Row ${Math.floor((r.score % 1000) / 10)}`}</span><span>${icon("scale")}${r.maxHand}</span></div>`).join("");
   }
 
   /** Why the run ended, in a sentence or two. */
@@ -1930,7 +1950,7 @@ export class App implements RunAgent, Presenter {
     if (sc.win) meta.wins++;
     meta.bestRow = Math.max(meta.bestRow, run.row + 1 + (run.act - 1) * 16);
     meta.history.unshift({ at: Date.now(), molt: run.molt, win: sc.win, reason: sc.reason, row: run.row + 1, act: run.act, maxHand: run.maxHand - run.scars, fights: run.stats.fights, devoured: run.stats.devoured.length, seed: run.seed, ...(sc.ending ? { ending: sc.ending } : {}), turn: run.ascension, ...(run.daily ? { daily: run.daily } : {}), ...(run.stats.diedTo ? { diedTo: run.stats.diedTo } : {}), ...(run.assisted ? { assisted: true } : {}) });
-    if (run.daily && !run.assisted) void submitDaily({ date: run.daily, molt: run.molt, win: sc.win, row: run.row + 1 + (run.act - 1) * 16, seed: run.seed });
+    if (run.daily && !run.assisted && this.s.playerName) void submitDaily({ date: run.daily, molt: run.molt, win: sc.win, row: run.row + 1 + (run.act - 1) * 16, seed: run.seed, player: this.s.playerName, maxHand: run.maxHand - run.scars });
     // Giving the Tail back its body: you carry one of its scales into the next descent.
     if (sc.win && sc.ending === "give") meta.tailScale = true;
     if (sc.win && sc.ending) {
@@ -2017,8 +2037,9 @@ export class App implements RunAgent, Presenter {
       </dl>
       ${!sc.win ? this.deathHTML(run) : ""}
       ${this.summaryHTML(run)}
-      <div class="menu"><button class="btn solid" data-nav data-autofocus data-again>Descend again</button><button class="btn ghost" data-nav data-title>Title</button></div>
+      <div class="menu">${run.daily && leaderboardOn() ? `<button class="btn" data-nav data-board>Today's board</button>` : ""}<button class="btn solid" data-nav data-autofocus data-again>Descend again</button><button class="btn ghost" data-nav data-title>Title</button></div>
     </div></section>`);
+    el.querySelector("[data-board]")?.addEventListener("click", () => void this.showDailyBoard(run.daily!));
     el.querySelector("[data-again]")!.addEventListener("click", () => {
       this.ui();
       const seed = Math.random().toString(36).slice(2, 10).toUpperCase();
@@ -2095,6 +2116,7 @@ export class App implements RunAgent, Presenter {
       row("tips", "Tips", s.tips ? "On" : "Off"),
       row("resetTips", "Show tips again", ""),
       row("glossary", "Glossary", ""),
+      ...(leaderboardOn() ? [row("playerName", "Leaderboard name", this.s.playerName ? escapeHtml(this.s.playerName) : "Not set")] : []),
       row("hand", "End turn button", s.hand === "left" ? "Left thumb" : "Right thumb"),
       row("undo", "Undo assist", s.undo ? "On (runs are marked)" : "Off"),
       row("saveExport", "Copy save code", ""),
@@ -2142,6 +2164,11 @@ export class App implements RunAgent, Presenter {
       case "glossary":
         this.showGlossary();
         return;
+      case "playerName": {
+        const name = prompt("Name for the Daily leaderboard (up to 16 letters)", s.playerName ?? "");
+        if (name !== null) s.playerName = name.replace(/[^\p{L}\p{N} _.-]/gu, "").trim().slice(0, 16);
+        break;
+      }
       case "hand": s.hand = s.hand === "left" ? "right" : "left"; break;
       case "undo": s.undo = !s.undo; break;
       case "saveExport": return this.saveExport();

@@ -696,3 +696,9 @@ button { font: inherit; color: inherit; }
 .foe .q-heart { transform-box: view-box; transform-origin: 100px 128px; animation: qheart 2.4s ease-in-out infinite; }
 .foe svg[data-phase="2"] .q-heart { animation-duration: 0.9s; }
 @keyframes qheart { 50% { transform: scale(1.12); } }
+
+.board-list { width: min(480px, 100%); max-height: 60vh; overflow-y: auto; }
+.board-row { display: grid; grid-template-columns: 2em 1fr auto auto; gap: 12px; padding: 8px 4px; border-bottom: 1px solid rgba(236,227,207,.12); font-family: var(--f-poster); letter-spacing: 0.05em; align-items: center; }
+.board-row.me { color: var(--gold); }
+.board-row span:last-child { display: inline-flex; align-items: center; gap: 3px; }
+.board-row svg { width: 14px; height: 14px; }

@@ -110,8 +110,11 @@ Every illustration is procedural until generated art lands. Drop files named by 
   save). **What's new** reads `CHANGELOG.md`; the version shows on the title.
 - **Library → History**: replay any run's seed (↻) and see where your runs end, by enemy and stratum.
   The molt picker takes a typed seed.
-- **Daily leaderboard**: set `VITE_LEADERBOARD_URL` at build time and Daily results (not assisted
-  runs) are POSTed there as `{date, molt, win, row, seed}`. Unset, nothing leaves the device.
+- **Daily leaderboard (Supabase)**: set `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` and optionally
+  `VITE_LEADERBOARD_TABLE` (default `scores`) in Vercel's environment variables. Daily results from
+  named, unassisted runs are posted as `{game: "spend-yourself", board: "daily-YYYY-MM-DD", player,
+  score, meta}`, and the title gets "Today's board". Column mapping lives in `toRow`/`fromRow` in
+  `src/ui/leaderboard.ts`. Unset, nothing leaves the device.
 - **Undo assist** (Settings): undo the last card this turn; the run is marked assisted.
 - **CI** gates on the balance sim (`npm run sim -- --runs 200 --ci`), bands in `tools/sim.ts`.
 - Performance: a full fight redraw at 4× CPU throttle with 4 enemies and 14 cards takes ~11 ms
