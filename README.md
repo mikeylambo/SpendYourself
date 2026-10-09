@@ -70,6 +70,8 @@ Every illustration is procedural until generated art lands. Drop files named by 
 3. **First-pass numbers trimmed by the sim**: Beetle Queen 100 HP, phase 2 wounds 5, one grub per
    summon in phase 2; Wasp Court alternates 1 and 2 wounds instead of 2 every turn; Choir heads
    45 HP each (from 60) with a 6 heal (from 8).
+   Tide's Riptide draws only while you hold 3 or fewer (the spec draws always): a strike that
+   replaces itself costs nothing in a game where cards are health.
 4. **The Tail** has max hand × 12 health (counting at most 15 cards, the size the docs expect by act 3), draws two cards a turn from a copy of your deck (three
    below half), and turns strikes into wounds (damage ÷ 4), guards into block and the rest into
    strength or poison. Close the Ring appears when it is down to its last 12 health ("last card").
@@ -79,6 +81,8 @@ Every illustration is procedural until generated art lands. Drop files named by 
 
 ## Known gaps / next
 
+- Balance (100 full runs per molt, balanced bot): Venom 33%, Storm 23%, Tide 57% against the
+  doc's 25–45% band. Tide's edge comes from its starter and its block/draw pool, not one card.
 - Balance: see the latest sim report (CI artifact). Spender is still not viable and wound choice
   isn't mattering enough; the tuning doc's levers are eat and bind pressure.
 - Not yet tested on real phones or a physical gamepad (headless Chromium at phone and desktop

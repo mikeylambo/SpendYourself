@@ -528,7 +528,7 @@ T("tide.ebb", "Ebb", "body", "C", {
   run: async (k, [d]) => { k.e.draw(d!); const c = await k.e.chooseOne(others(k), "discard"); if (c) k.e.discard(c.uid); },
 });
 T("tide.riptide", "Riptide", "strike", "C", {
-  tgt: true, f: "Deal 3 + c; draw 1", n: (k) => [3 + k.c], t: ([d]) => `Deal ${d}. Draw 1.`, run: (k, [d]) => { k.e.hit(k.t, d!); k.e.draw(1); },
+  tgt: true, f: "Deal 3 + c; draw 1 if your hand is 3 or fewer", n: (k) => [3 + k.c], t: ([d]) => `Deal ${d}. Draw 1 if you hold 3 or fewer.`, run: (k, [d]) => { k.e.hit(k.t, d!); if (small(k)) k.e.draw(1); },
 });
 T("tide.swell_guard", "Swell Guard", "guard", "C", {
   f: "Block 2 + c; draw 1 if your hand is 3 or fewer", n: (k) => [2 + k.c], t: ([b]) => `Block ${b}. Draw 1 if you hold 3 or fewer.`,

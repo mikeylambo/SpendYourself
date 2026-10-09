@@ -16,6 +16,7 @@ const OUT = opt("out", "");
 const STYLES: BotStyle[] = ["balanced", "spender", "hoarder", "randomWounds"];
 const MOLT = opt("molt", "venom") as "venom" | "tide" | "storm";
 const ASC = Number(opt("turn", "0"));
+const OPT_MOLT_ONLY = args.includes("--molt-cards");
 
 // Full-run pass bands at Turn 0 (slifer-tuning.md §9).
 const BANDS: Record<string, [number, number]> = {
@@ -83,7 +84,7 @@ for (const style of STYLES) {
     deathsBy: Object.fromEntries(Object.entries(deathBy).sort((a, b) => b[1] - a[1])),
     stuck: results.filter((r) => r.reason === "stuck").length,
     topWinningCards: Object.entries(cardFreq)
-      .filter(([id]) => !["card.fang", "card.scale", "card.venom_bite", "card.swallow"].includes(id))
+      .filter(([id]) => !["card.fang", "card.scale", "card.venom_bite", "card.swallow", "tide.ebb", "tide.riptide", "storm.gather", "storm.thunderhead"].includes(id) && !(OPT_MOLT_ONLY && !id.startsWith(MOLT)))
       .sort((a, b) => b[1] - a[1])
       .slice(0, 8)
       .map(([id, n]) => `${id} ${Math.round((n / Math.max(1, wins.length)) * 100)}%`),
