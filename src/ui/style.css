@@ -529,7 +529,7 @@ button { font: inherit; color: inherit; }
 
 /* ---------- fight clarity ---------- */
 /* Damage preview: the slice of health the selected card would take, and a skull if it kills. */
-.foe .hpbar u { position: absolute; top: -1.5px; bottom: -1.5px; background: var(--vermilion); opacity: 0.85; animation: pvblink 1.1s ease-in-out infinite; }
+.foe .hpbar u { position: absolute; top: -1.5px; bottom: -1.5px; background: repeating-linear-gradient(45deg, var(--vermilion) 0 3px, #8c2a18 3px 5px); opacity: 0.85; animation: pvblink 1.1s ease-in-out infinite; }
 @keyframes pvblink { 50% { opacity: 0.45; } }
 .foe .pvhp { font-style: normal; color: var(--vermilion); margin-left: 3px; }
 .foe .kill { position: absolute; right: 4%; top: 4%; width: 34%; max-width: 54px; aspect-ratio: 1; display: none; color: var(--vermilion); background: var(--bone); border: 2px solid var(--vermilion); border-radius: 50%; padding: 4px; z-index: 3; }
@@ -679,5 +679,20 @@ button { font: inherit; color: inherit; }
 .hist-row .replay:hover, .hist-row .replay:focus-visible { border-color: var(--gold); outline: none; }
 .death-stats { width: min(560px, 100%); }
 .death-stats .bar-row { display: grid; grid-template-columns: 9em 1fr 2em; gap: 8px; align-items: center; margin: 4px 0; }
+.death-stats .bars { display: flex; flex-direction: column; gap: 2px; }
 .death-stats .bar-row i { height: 8px; background: var(--vermilion); display: block; }
+.death-stats .bar-row u { height: 6px; border: 1px solid var(--bone-dim); display: block; min-width: 1px; }
 .death-stats .bar-row b { font-family: var(--f-poster); text-align: right; }
+
+/* GPU paper pass: one static multiply layer over everything. */
+.paper-pass { position: fixed; left: 0; top: 0; width: 100%; height: var(--app-h, 100dvh); pointer-events: none; z-index: 50; mix-blend-mode: multiply; opacity: 0.85; }
+
+/* Beetle Queen: the wing cases part when she breaks, and her heart pulses. */
+.foe .elytra { transition: transform calc(0.7s / var(--speed)) cubic-bezier(.3,1.4,.5,1); transform-box: view-box; }
+.foe .elytra-l { transform-origin: 100px 64px; }
+.foe .elytra-r { transform-origin: 100px 64px; }
+.foe svg[data-phase="2"] .elytra-l { transform: rotate(14deg) translateX(-8px); }
+.foe svg[data-phase="2"] .elytra-r { transform: rotate(-14deg) translateX(8px); }
+.foe .q-heart { transform-box: view-box; transform-origin: 100px 128px; animation: qheart 2.4s ease-in-out infinite; }
+.foe svg[data-phase="2"] .q-heart { animation-duration: 0.9s; }
+@keyframes qheart { 50% { transform: scale(1.12); } }

@@ -6,6 +6,7 @@ import { GLOSSARY, glossaryFor, HOW_TO_PLAY, intentWords, TIPS } from "./guide.t
 import { EVENTS } from "../data/events.ts";
 import { FOES } from "../data/foes.ts";
 import { tuning } from "../data/tuning.ts";
+import BOT_DEATHS from "../data/botDeaths.json";
 import type { Combat } from "../game/combat.ts";
 import { LAST_ACT, newRun, RunController, type RunAgent } from "../game/run.ts";
 import type { MapNode, RunState } from "../game/state.ts";
@@ -13,6 +14,7 @@ import { previewPlay, type PlayPreview } from "../game/preview.ts";
 import type { Act, CombatState, FoeState, GameEvent, MoltId, PickRequest, Presenter } from "../game/types.ts";
 import { bloomCoda, boneGlyph, creatureSVG, icon, ringGlyph, SVG_DEFS, uroRing } from "./art.ts";
 import { AudioEngine } from "./audio.ts";
+import { PaperPass } from "./paper.ts";
 import { breakdownHTML, cardHTML, escapeHtml, previewCombat, staticCardHTML } from "./cardView.ts";
 import { focusFirst, navMove, SemanticInput, type Action } from "./input.ts";
 import { errorLog, Persistence, submitDaily, type Meta, type Settings } from "./meta.ts";
@@ -44,6 +46,7 @@ const freshSeed = () => Math.random().toString(36).slice(2, 10).toUpperCase();
 const dailyDate = () => new Date().toISOString().slice(0, 10);
 const hashDay = (d: string) => [...d].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7);
 /** Write markup only when it changed; returns whether it did. Rebuilding unchanged nodes is most of a fight frame. */
+const SHORT_LANDSCAPE = matchMedia("(orientation: landscape) and (max-height: 540px)");
 const lastHTML = new WeakMap<Element, string>();
 function setHTML(el: Element, html: string): boolean {
   if (lastHTML.get(el) === html) return false;
@@ -106,6 +109,7 @@ export class App implements RunAgent, Presenter {
   private cardHtml = new WeakMap<HTMLElement, string>();
   /** The guided first fight: which step the player is on. */
   private guided: string | null = null;
+  private paper: PaperPass | null = null;
   /** Undo assist: the fight and run just before the last card this turn. */
   private undoSnap: { turn: number; s: CombatState; run: Partial<RunState> } | null = null;
   /** This run completed every molt's both endings: show the closing plate. */
@@ -166,8 +170,16 @@ export class App implements RunAgent, Presenter {
     const r = document.documentElement;
     r.dataset.contrast = s.highContrast ? "high" : "normal";
     r.dataset.motion = s.reducedMotion ? "reduced" : "full";
-    r.dataset.grain = s.grain ? "on" : "off";
-    r.dataset.halftone = s.halftone ? "on" : "off";
+    // The GPU paper pass replaces the CSS grain and halftone when WebGL is available.
+    this.paper ??= new PaperPass(document.body);
+    const gpu = this.paper.ok;
+    r.dataset.grain = s.grain && !gpu ? "on" : "off";
+    r.dataset.halftone = s.halftone && !gpu ? "on" : "off";
+    if (gpu) {
+      this.paper.grain = s.grain;
+      this.paper.halftone = s.halftone;
+      this.paper.visible = s.grain || s.halftone;
+    }
     r.dataset.hand = s.hand;
     r.style.setProperty("--text-scale", String(s.textScale));
     r.style.setProperty("--speed", String(s.fightSpeed));
@@ -397,9 +409,15 @@ export class App implements RunAgent, Presenter {
       const k = d.diedTo ? FOES[d.diedTo]?.name ?? d.diedTo : DEATH[d.reason] ?? d.reason;
       by.set(k, (by.get(k) ?? 0) + 1);
     }
+    // The balance bots' deaths (all molts averaged) as a ghost bar: where a careful but plain player falls.
+    const bots = new Map<string, number>();
+    for (const m of MOLTS) for (const [id, share] of Object.entries((BOT_DEATHS as Record<string, Record<string, number>>)[m] ?? {})) {
+      const k = FOES[id]?.name ?? DEATH[id] ?? id;
+      bots.set(k, (bots.get(k) ?? 0) + share / MOLTS.length);
+    }
     const top = [...by].sort((a, b) => b[1] - a[1]).slice(0, 5);
     const acts = [1, 2, 3].map((a) => deaths.filter((d) => d.act === a).length);
-    return `<div class="death-stats"><h2>Where you fall</h2>${top.map(([k, n]) => `<div class="bar-row"><span>${escapeHtml(k)}</span><i style="width:${Math.round((n / deaths.length) * 100)}%"></i><b>${n}</b></div>`).join("")}<p class="seed-line">By stratum: ${acts.map((n, i) => `${escapeHtml(ACT_NAMES[i + 1] ?? "")} ${n}`).join(" · ")}</p></div>`;
+    return `<div class="death-stats"><h2>Where you fall</h2><p class="seed-line">Solid bar: you. Outline: the balance bots.</p>${top.map(([k, n]) => `<div class="bar-row"><span>${escapeHtml(k)}</span><span class="bars"><i style="width:${Math.round((n / deaths.length) * 100)}%"></i><u style="width:${Math.round((bots.get(k) ?? 0) * 100)}%"></u></span><b>${n}</b></div>`).join("")}<p class="seed-line">By stratum: ${acts.map((n, i) => `${escapeHtml(ACT_NAMES[i + 1] ?? "")} ${n}`).join(" · ")}</p></div>`;
   }
 
   private ui(): void {
@@ -1078,11 +1096,17 @@ export class App implements RunAgent, Presenter {
     setHTML(pv, selCard ? cardHTML(selCard, c, { inHand: true }) + (selCard.uid === this.sel && !peekCard ? this.previewSummary(c) : "") : "");
     // Sit the enlarged card over its place in the fan, inside the screen.
     const selIdx = selCard ? hand.indexOf(selCard) : -1;
-    if (selIdx >= 0) {
+    // Short landscape pins the preview to the left edge in CSS; elsewhere it follows the card.
+    if (selIdx >= 0 && !SHORT_LANDSCAPE.matches) {
       const t = n > 1 ? selIdx / (n - 1) : 0.5;
       const half = Math.min(105, W * 0.19) + 8;
-      pv.style.left = `${Math.min(W - half, Math.max(half, W / 2 - span / 2 + span * t))}px`;
-    }
+      // Never cover the wound forecast at the left of the might row.
+      const plates = el.querySelector<HTMLElement>(".core .left");
+      const zoneLeft = zone.getBoundingClientRect().left;
+      const keepClear = plates && plates.offsetWidth ? plates.getBoundingClientRect().right - zoneLeft + 6 : 0;
+      const minLeft = Math.min(W - half, Math.max(half, keepClear + half));
+      pv.style.left = `${Math.min(W - half, Math.max(minLeft, W / 2 - span / 2 + span * t))}px`;
+    } else pv.style.left = "";
     // Uro's body behind the scales
     this.drawBody(zone.querySelector("svg.body")!, pts, c, W, H, cw, hand.map((x) => x.coil));
   }

@@ -1,0 +1,39 @@
+{
+ "venom": {
+  "boss.beetle_queen": 0.174,
+  "boss.choir_rot": 0.13,
+  "elite.honey_fungus": 0.109,
+  "elite.wasp": 0.087,
+  "foe.spore_puff": 0.076,
+  "boss.choir_bind": 0.065,
+  "foe.fungus_priest": 0.043,
+  "elite.rot_stag": 0.043,
+  "boss.choir_bloom": 0.043,
+  "foe.lantern_angler": 0.033,
+  "foe.root_hound": 0.033
+ },
+ "tide": {
+  "foe.pressure_crab": 0.179,
+  "boss.choir_bloom": 0.155,
+  "elite.wasp": 0.107,
+  "boss.beetle_queen": 0.071,
+  "boss.tail": 0.071,
+  "boss.choir_rot": 0.06,
+  "boss.drowned_mouth": 0.06,
+  "foe.lantern_angler": 0.06,
+  "foe.abyss_jelly": 0.036
+ },
+ "storm": {
+  "elite.wasp": 0.191,
+  "boss.choir_rot": 0.149,
+  "boss.beetle_queen": 0.128,
+  "boss.choir_bloom": 0.074,
+  "foe.abyss_jelly": 0.064,
+  "boss.choir_bind": 0.064,
+  "elite.honey_fungus": 0.053,
+  "elite.rot_stag": 0.043,
+  "elite.owl_bones": 0.043,
+  "foe.blind_eel": 0.032,
+  "foe.spore_puff": 0.032
+ }
+}

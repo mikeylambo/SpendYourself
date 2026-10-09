@@ -254,14 +254,17 @@ const CREATURES: Record<string, () => string> = {
   "boss.beetle_queen": () => {
     let s = shadow(100, 186, 90);
     s += legs(100, 140, 150, 3, 44) + legs(100, 108, 160, 3, -38);
-    s += form("M100,62 C150,62 178,100 176,140 C174,170 140,184 100,184 Z", "hatch", 10, 12);
-    s += form("M100,62 C50,62 22,100 24,140 C26,170 60,184 100,184 Z", "hatch", 10, 12);
+    // The soft body under the wing cases: only seen when the carapace splits in phase two.
+    s += `<g class="q-body">${form(E(100, 126, 40, 52), "cross", 6, 7)}${[0, 1, 2, 3].map((k) => pathS(`M${70 + k * 2},${96 + k * 18} Q100,${104 + k * 18} ${130 - k * 2},${96 + k * 18}`, 1.2)).join("")}</g>`;
+    let left = form("M100,62 C50,62 22,100 24,140 C26,170 60,184 100,184 Z", "hatch", 10, 12);
+    let right = form("M100,62 C150,62 178,100 176,140 C174,170 140,184 100,184 Z", "hatch", 10, 12);
     for (let k = 1; k <= 4; k++) {
-      s += pathS(`M${100 - k * 15},${170 - k * 4} Q${100 - k * 17},${110} ${100 - k * 8},${70 + k * 4}`, 1.1);
-      s += pathS(`M${100 + k * 15},${170 - k * 4} Q${100 + k * 17},${110} ${100 + k * 8},${70 + k * 4}`, 1.1);
+      left += pathS(`M${100 - k * 15},${170 - k * 4} Q${100 - k * 17},${110} ${100 - k * 8},${70 + k * 4}`, 1.1);
+      right += pathS(`M${100 + k * 15},${170 - k * 4} Q${100 + k * 17},${110} ${100 + k * 8},${70 + k * 4}`, 1.1);
     }
+    s += `<g class="elytra elytra-l">${left}</g><g class="elytra elytra-r">${right}</g>`;
     s += `<g class="crack">${pathS("M100,70 L92,96 L106,112 L94,140 L104,166", 3)}</g>`;
-    s += `<circle cx="100" cy="128" r="16" fill="#ece3cf" stroke="${INK}" stroke-width="2"/><circle cx="100" cy="128" r="9" fill="url(#cross)" stroke="${INK}" stroke-width="1.4"/>`;
+    s += `<g class="q-heart"><circle cx="100" cy="128" r="16" fill="#ece3cf" stroke="${INK}" stroke-width="2"/><circle cx="100" cy="128" r="9" fill="url(#cross)" stroke="${INK}" stroke-width="1.4"/></g>`;
     s += form(E(100, 50, 34, 18), "cross", 5, 6);
     s += form(E(100, 30, 18, 12), "cross", 3, 4);
     s += form("M86,24 C70,10 60,14 52,4 C66,8 76,8 90,18Z", "hatch", 2, 2) + form("M114,24 C130,10 140,14 148,4 C134,8 124,8 110,18Z", "hatch", 2, 2);
