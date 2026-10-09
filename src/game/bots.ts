@@ -18,6 +18,20 @@ function cardValue(c: BodyCard): number {
   return c.coil * 2 + RARITY_VALUE[d.rarity]! + (c.up ? 1 : 0) + (d.type === "strike" ? 0.5 : 0);
 }
 
+/** What a card is worth next turn: its live numbers (damage, block, poison), plus coil and rarity. */
+function liveValue(e: Combat, c: BodyCard): number {
+  const d = CARDS[c.id]!;
+  let n = 0;
+  try {
+    const k = e.ctx(c, true);
+    const vals = e.values(d, k);
+    n = (vals[0] ?? 0) * (d.type === "guard" ? 1.2 : 1) + (vals[1] ?? 0) * 0.5;
+  } catch {
+    n = 0;
+  }
+  return n + cardValue(c) + (d.shed ? -1 : 0) + (c.bound ? -2 : 0);
+}
+
 /** Wounds the current intents will land next enemy turn (before block). */
 export function incomingWounds(e: Combat): number {
   let n = e.s.selfPoison > 0 ? 1 : 0;
@@ -84,7 +98,9 @@ export class Bot implements RunAgent {
     }
     if (req.optional) return [];
     const keepBest = req.kind === "choose" && !["shed", "discard", "drain"].includes(req.prompt);
-    cards.sort((a, b) => (keepBest ? cardValue(b) - cardValue(a) : cardValue(a) - cardValue(b)));
+    const e = this.ctl?.combat;
+    const v = (c: BodyCard) => (e ? liveValue(e, c) : cardValue(c));
+    cards.sort((a, b) => (keepBest ? v(b) - v(a) : v(a) - v(b)));
     return cards.slice(0, req.count).map((c) => c.uid);
   }
 

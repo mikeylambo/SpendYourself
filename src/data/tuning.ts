@@ -14,6 +14,11 @@ export const tuning = {
     scarFloor: 4, // end a fight below this many cards: one scar per card short
     wornAt: 4, // effective max hand below this ends the run
   },
+  /** Wound-choice pressure (slifer-tuning.md §9): extra cards each eat and bind intent takes. */
+  pressure: {
+    eatBonus: 0,
+    bindBonus: 0,
+  },
   devour: {
     perFight: 1,
     maxHandPerDevour: 1,

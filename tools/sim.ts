@@ -2,6 +2,7 @@
 //   npm run sim -- --runs 200 [--ci] [--out sim-report.json]
 import { writeFileSync } from "node:fs";
 import { Bot, type BotStyle } from "../src/game/bots.ts";
+import { tuning } from "../src/data/tuning.ts";
 import { newRun, RunController } from "../src/game/run.ts";
 import type { Presenter } from "../src/game/types.ts";
 
@@ -17,6 +18,15 @@ const STYLES: BotStyle[] = ["balanced", "spender", "hoarder", "randomWounds"];
 const MOLT = opt("molt", "venom") as "venom" | "tide" | "storm";
 const ASC = Number(opt("turn", "0"));
 const OPT_MOLT_ONLY = args.includes("--molt-cards");
+// --set pressure.eatBonus=1 overrides any tuning number for experiments.
+for (let i = 0; i < args.length; i++) {
+  if (args[i] !== "--set") continue;
+  const [path, val] = (args[i + 1] ?? "").split("=");
+  const keys = path!.split(".");
+  let o: Record<string, unknown> = tuning as unknown as Record<string, unknown>;
+  for (const k of keys.slice(0, -1)) o = o[k] as Record<string, unknown>;
+  o[keys.at(-1)!] = Number(val);
+}
 
 // Full-run pass bands at Turn 0 (slifer-tuning.md §9).
 const BANDS: Record<string, [number, number]> = {

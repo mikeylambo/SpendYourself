@@ -667,12 +667,12 @@ export class Combat {
         return wounds;
       }
       case "eat": {
-        const eats = (a.x ?? 1) + (asc(this.run.ascension, 6) && this.run.act >= 2 ? 1 : 0);
+        const eats = (a.x ?? 1) + tuning.pressure.eatBonus + (asc(this.run.ascension, 6) && this.run.act >= 2 ? 1 : 0);
         for (let i = 0; i < eats; i++) await this.eat(f);
         return 0;
       }
       case "bind": {
-        const binds = (a.x ?? 1) + (asc(this.run.ascension, 12) ? 1 : 0);
+        const binds = (a.x ?? 1) + tuning.pressure.bindBonus + (asc(this.run.ascension, 12) ? 1 : 0);
         for (let i = 0; i < binds; i++) {
           if (f.cancelEat) break;
           if (this.useDecoy()) continue;
