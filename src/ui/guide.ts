@@ -33,6 +33,7 @@ export const HOW_TO_PLAY: GuidePage[] = [
     art: `<b class="guide-num">7</b>`,
     lines: [
       "Might is how many cards you hold. Most attacks grow with it.",
+      "Past 10 cards, might grows at half speed: a huge body is tough more than it is deadly.",
       "A full hand hits hard. Every card you spend makes the next hit weaker.",
       "Card numbers update live, so what you see is what you deal.",
     ],
@@ -71,7 +72,9 @@ export const HOW_TO_PLAY: GuidePage[] = [
     lines: [
       "Win a fight and devour a husk: its card joins your deck and your max hand grows by one.",
       "A bigger body opens fights with more cards.",
-      "At 9 cards you are Big: every hit on you lands one more wound.",
+      "At 9 cards you are Big: every hit on you lands one more wound (two at 18).",
+      "Deeper prey grows with you: the bigger your body, the tougher what you hunt.",
+      "You can skip a devour to stay lean: take glint and mend a scar instead.",
     ],
   },
   {
@@ -102,11 +105,12 @@ export const TIPS: Record<string, string> = {
   big: "Big: with 9+ cards you hit harder, but every hit on you lands one more wound.",
   poison: "Poison deals damage at the start of the enemy's turn, then fades by 1.",
   bind: "A knotted card can't be played this turn. It still counts for might.",
+  frenzy: "Long fights make prey desperate: from turn 6, each enemy hits 1 harder every turn. Don't wait forever.",
 };
 
 /** Keywords explained on inspect. */
 export const GLOSSARY: Array<[RegExp, string, string]> = [
-  [/\bmight\b/i, "Might", "Cards in your hand when this resolves (this card has already left)."],
+  [/\bmight\b/i, "Might", "Cards in your hand when this resolves (this card has already left). Past 10, every 2 cards add 1."],
   [/\bcoil/i, "Coil", "Gold rings a card gains each turn you keep it. Resets when played or lost."],
   [/\bShed\b/, "Shed", "Gone for the rest of this fight after it resolves. It returns next fight."],
   [/\bSacrifice\b/, "Sacrifice", "An extra cost: discard that many cards of your choice first."],
@@ -115,7 +119,7 @@ export const GLOSSARY: Array<[RegExp, string, string]> = [
   [/\bWeaken/, "Weaken", "The enemy's attacks land that many fewer wounds; drops by 1 each turn."],
   [/\bdevour/i, "Devour", "Add a husk's card to your deck and grow max hand by 1."],
   [/\bmax hand\b/i, "Max hand", "The most cards you can hold. Draws stop there."],
-  [/\bBig\b/, "Big", "At 9+ cards every enemy hit lands 1 more wound."],
+  [/\bBig\b/, "Big", "At 9+ cards every enemy hit lands 1 more wound; 2 more at 18+."],
   [/\bscar/i, "Scar", "Each scar lowers max hand by 1 until mended."],
   [/\bCoiled\b/, "Coiled", "Applies only if played at coil 2 or more."],
   [/\bbind|\bbound\b/i, "Bind", "A bound card can't be played this turn."],

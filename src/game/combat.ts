@@ -29,17 +29,20 @@ const MAX_FOES = 4;
 export function openingHand(maxHand: number): number {
   const t = tuning.body;
   const full = Math.min(maxHand, t.heavyAt) - 1;
-  return Math.max(t.openingDraw, full + Math.floor(Math.max(0, maxHand - t.heavyAt) / t.openingGrowth));
+  const grown = full + Math.floor(Math.max(0, maxHand - t.heavyAt) / t.openingGrowth);
+  return Math.max(t.openingDraw, Math.min(grown, t.openingCap));
 }
 
 export function newFoe(s: { nextUid: number }, id: string, rng: Rng): FoeState {
   const def = FOES[id];
   if (!def) throw new Error(`Unknown foe ${id}`);
+  const scale = def.tier === "normal" ? tuning.foes.normalHp : def.tier === "elite" ? tuning.foes.eliteHp : [];
+  const hp = Math.round(def.hp * (scale[def.act - 1] ?? 1));
   return {
     uid: ++s.nextUid,
     id,
-    hp: def.hp,
-    max: def.hp,
+    hp,
+    max: hp,
     block: 0,
     str: 0,
     weak: 0,
@@ -69,6 +72,7 @@ export function createCombat(run: RunState, encounter: string[], kind: FoeTier, 
     heavyAt: (asc(run.ascension, 10) ? 11 : t.heavyAt) + (has("bone.anchor") ? 3 : 0),
     drawPerTurn: t.drawPerTurn - (has("bone.queen_carapace") ? 1 : 0),
   });
+  body.mightKnee = t.mightKnee;
   const s: CombatState = {
     v: 1,
     kind,
@@ -132,6 +136,8 @@ export function createCombat(run: RunState, encounter: string[], kind: FoeTier, 
   for (const f of s.foes) {
     const def = FOES[f.id]!;
     if (def.tier === "boss" && asc(run.ascension, 18)) f.hp = f.max = Math.ceil(f.max * 1.1);
+    const tf = tuning.foes;
+    if (def.tier !== "boss") f.hp = f.max = Math.round(f.max * (1 + tf.hpPerSize * Math.max(0, run.maxHand - run.scars - tf.sizeFrom)));
     if (f.id === "boss.tail") {
       f.hp = f.max = Math.max(60, Math.min(run.maxHand - run.scars, 15) * 12);
       const ids = run.deck.map((d) => d.id);
@@ -372,7 +378,14 @@ export class Combat {
   attackValue(f: FoeState, n: number): number {
     let v = Math.max(0, n + f.str - f.weak);
     if (this.n("moonPull")) v = Math.floor(v / 2);
-    return v + (this.bigActive() ? tuning.body.bigExtraWounds + (this.has("bone.drowned_pearl") ? 1 : 0) : 0);
+    return v + this.bigExtra();
+  }
+
+  /** Extra wounds per hit for being Big: 1 at 9+ cards, 2 at 15+. */
+  bigExtra(): number {
+    if (!this.bigActive()) return 0;
+    const t = tuning.body;
+    return t.bigExtraWounds + (this.body.hand.length >= t.bigTier2At ? 1 : 0) + (this.has("bone.drowned_pearl") ? 1 : 0);
   }
   attackHits(f: FoeState, x: number): number {
     return this.has("bone.choir_bone") && x > 1 ? Math.max(1, x - f.weak) : x;
@@ -558,7 +571,7 @@ export class Combat {
       f.thorns = 0;
       f.attackedLast = false;
       if (f.poison > 0) {
-        const dmg = f.poison * (s.flags.venomHeart ? 2 : 1);
+        const dmg = this.poisonTick(f);
         f.hp -= dmg;
         await this.emit("enemy.poison", { uid: f.uid, n: dmg });
         if (!f.slowRot) f.poison--;
@@ -583,6 +596,11 @@ export class Combat {
       f.coaxed = false;
       f.cancelEat = false;
       if (f.revealed > 0) f.revealed--;
+      // Frenzy: a drawn-out fight makes prey desperate, so holding forever never pays.
+      if (f.alive && FOES[f.id]!.tier !== "boss" && s.turn >= tuning.foes.frenzyFrom) {
+        f.str += 1;
+        void this.emit("foe.frenzy", { uid: f.uid });
+      }
       if (f.alive) this.nextIntent(f);
     }
     if (this.checkWin()) return;
@@ -900,6 +918,13 @@ export class Combat {
     return drawn;
   }
 
+  /** Damage this foe's poison deals at the start of its turn. Venom bites +1 harder per stratum below the first. */
+  poisonTick(f: FoeState): number {
+    if (f.poison <= 0) return 0;
+    const depth = this.run.molt === "venom" ? this.run.act - 1 : 0;
+    return (f.poison + depth) * (this.s.flags.venomHeart ? 2 : 1);
+  }
+
   poison(t: FoeState | undefined, n: number): void {
     if (!t || !t.alive || n <= 0) return;
     t.poison += n;
@@ -965,7 +990,7 @@ export class Combat {
 
   devourNow(huskId: string): void {
     const run = this.run;
-    const per = tuning.devour.maxHandPerDevour + (this.s.flags.leviathan ? 1 : 0);
+    const per = run.maxHand >= tuning.devour.maxHandCap ? 0 : tuning.devour.maxHandPerDevour + (this.s.flags.leviathan ? 1 : 0);
     run.deck.push({ id: huskId, up: false });
     run.maxHand += per;
     this.body.maxHand += per;

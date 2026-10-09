@@ -229,6 +229,8 @@ export class RunController {
       return true;
     }
     run.stats.fights++;
+    if (s.turn === 1) run.stats.quickWins = (run.stats.quickWins ?? 0) + 1;
+    (run.stats.fightTurns ??= []).push([run.act, s.kind, s.turn, s.encounter.join("+")]);
     run.fightIndex++;
     if (s.kind === "elite") run.stats.elites++;
     // Scars for ending thin.
@@ -297,7 +299,7 @@ export class RunController {
     // Venom's Hunger: a poisoned kill's husk comes in twice (both cards), one growth step.
     run.deck.push({ id: h.id, up: false });
     if (h.twin) run.deck.push({ id: h.id, up: false });
-    run.maxHand += tuning.devour.maxHandPerDevour;
+    if (run.maxHand < tuning.devour.maxHandCap) run.maxHand += tuning.devour.maxHandPerDevour;
     run.lastDevoured = h.id;
     run.stats.devoured.push(h.id);
     if (this.devourRitePending) {
@@ -311,9 +313,20 @@ export class RunController {
   }
 
   /** Leave the reward, rest, shop, event or treasure screen. */
+  /** Leaving a reward without devouring anything pays glint and mends a scar. */
+  skipPays(): boolean {
+    const sc = this.run.screen;
+    return sc.kind === "reward" && sc.devours > 0 && sc.husks.length > 0 && sc.devours === (this.has("bone.black_pearl") ? 2 : 1);
+  }
+
   leave(): void {
     const run = this.run;
     this.devourRitePending = false;
+    // Choosing not to eat: a little glint and a mended scar, so growing is a real choice.
+    if (this.skipPays()) {
+      run.glint += tuning.devour.skipGlint;
+      this.mend(1);
+    }
     if (run.screen.kind === "reward" && run.screen.node === "boss") {
       run.screen = { kind: "actEnd" };
       return;

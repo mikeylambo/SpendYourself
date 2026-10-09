@@ -65,7 +65,21 @@ Every illustration is procedural until generated art lands. Drop files named by 
 
 1. **The opening hand grows with the body**: it fills to max hand − 1 up to the Heavy size (12),
    then grows one card per two max hand. With a flat 6, devouring only raised a cap the hand never
-   reached; with a full fill, late bodies of 25+ cards trivialised act 3.
+   reached; with a full fill, late bodies of 25+ cards trivialised act 3. It never passes 20 cards.
+6. **The snowball fix** (after a playtest that one-turned nearly every room past act 1 with a
+   43-card body). Damage grew with the square of hand size (each card hits for about might ÷ 2,
+   and you play many of them), while prey HP was flat. Now:
+   - **Might knee**: past 10, every two cards add one might.
+   - **Prey grows with you**: normal foes ×1 / 1.4 / 1.6 HP by act, elites ×1 / 1.2 / 1.4, and
+     both +5% per max hand above 12. Bosses are tuned by hand (Beetle Queen now 85 HP).
+   - **Frenzy**: from turn 6, normal and elite foes hit +1 harder every turn, so holding forever
+     never pays.
+   - **Big tier 2**: at 18+ cards every hit lands two extra wounds.
+   - **Growth stops at 30** max hand; **skipping a devour** pays 25 glint and mends a scar.
+   - Venom's poison ticks +1 per stratum below the first, so flat poison keeps pace with HP.
+   Pace (balanced bot): act 2–3 normal fights now average 2.5–4 turns (from ~1), elites 5+.
+   Hard caps on the opening hand were tested and rejected: an opening of 11–16 turned every boss
+   into a wall for every bot.
 2. **Venom's twin husk** adds both cards but one growth step.
 3. **First-pass numbers trimmed by the sim**: Beetle Queen 100 HP, phase 2 wounds 5, one grub per
    summon in phase 2; Wasp Court alternates 1 and 2 wounds instead of 2 every turn; Choir heads
@@ -81,8 +95,9 @@ Every illustration is procedural until generated art lands. Drop files named by 
 
 ## Known gaps / next
 
-- Balance (100 full runs per molt, balanced bot): Venom 33%, Storm 23%, Tide 57% against the
-  doc's 25–45% band. Tide's edge comes from its starter and its block/draw pool, not one card.
+- Balance (80 full runs per molt, balanced bot, after the snowball fix): Venom 11%, Storm 6–13%,
+  Tide 33%. The bots are deliberately below the old band now: they play far worse than people.
+  Tide still leads; waiting on more human runs before touching it.
 - Balance: see the latest sim report (CI artifact). Spender is still not viable and wound choice
   isn't mattering enough; the tuning doc's levers are eat and bind pressure.
 - Not yet tested on real phones or a physical gamepad (headless Chromium at phone and desktop

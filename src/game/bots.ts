@@ -3,6 +3,8 @@ import type { BodyCard } from "../bodydeck/BodyDeck.ts";
 import { BONES } from "../data/bones.ts";
 import { CARDS } from "../data/cards.ts";
 import { EVENTS } from "../data/events.ts";
+import { FOES } from "../data/foes.ts";
+import { tuning } from "../data/tuning.ts";
 import { Combat } from "./combat.ts";
 import type { RunAgent, RunController } from "./run.ts";
 import type { MapNode } from "./state.ts";
@@ -55,8 +57,20 @@ function evaluate(e: Combat): number {
   let v = 0;
   let hp = 0;
   for (const f of e.alive()) {
-    hp += Math.max(0, f.hp - f.poison);
-    v -= f.hp + 6 + f.block * 0.5 - f.poison * 0.9 - f.weak * 1.5;
+    // Poison keeps ticking (fading by 1 each turn unless slow rot): count what it will deal over the next turns.
+    const tick = e.poisonTick(f);
+    const fade = f.slowRot ? 0 : (s.flags.venomHeart ? 2 : 1);
+    let rot = 0;
+    for (let t = 0, d = tick; t < 4 && d > 0; t++, d -= fade) rot += d;
+    rot = Math.min(f.hp, rot);
+    hp += Math.max(0, f.hp - tick);
+    v -= f.hp + 6 + f.block * 0.5 - tick * 0.3 - rot * 0.6 - f.weak * 1.5;
+    // A splitter's children are part of its cost, so killing it never looks like a loss.
+    if (FOES[f.id]?.onDeath === "split") {
+      const mites = 2 * FOES["foe.mold_mite"]!.hp * (tuning.foes.normalHp[1] ?? 1);
+      v -= mites + 16;
+      hp += mites;
+    }
   }
   const next = hand - landed + 3;
   v += (hand - landed) * 2.6;
@@ -125,7 +139,7 @@ export class Bot implements RunAgent {
     if (!playable.length) return null;
     const targets = (c: BodyCard) => (CARDS[c.id]!.tgt ? e.alive().map((f) => f.uid) : [undefined]);
 
-    if (this.style === "spender" || e.s.turn > 40) {
+    if (this.style === "spender" || e.s.turn > 15) {
       if (hand.length <= 1) return null;
       for (const c of [...playable].sort((a, b) => cardValue(b) - cardValue(a))) {
         const t = e.alive().sort((a, b) => a.hp - b.hp)[0]?.uid;

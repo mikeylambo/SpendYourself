@@ -3,12 +3,18 @@ export const tuning = {
   body: {
     startMaxHand: 7,
     openingDraw: 6,
-    /** Opening hand fills the body (max hand − 1) up to the Heavy size, then grows +1 per this many max hand. */
+    /** Opening hand fills the body (max hand − 1) up to the Heavy size, then grows +1 per this many max hand… */
     openingGrowth: 2,
+    /** …but never past this: a huge body no longer opens with 25 cards. */
+    openingCap: 20,
     drawPerTurn: 3,
     heavyAt: 12,
     bigAt: 9,
     bigExtraWounds: 1,
+    /** At this many cards in hand, Big lands one more wound per hit (two in all). */
+    bigTier2At: 18,
+    /** Might past this grows at half speed: a 20-card hand has 15 might, not 20. */
+    mightKnee: 10,
     coilCap: 3,
     stormCoilCap: 5,
     scarFloor: 4, // end a fight below this many cards: one scar per card short
@@ -24,6 +30,20 @@ export const tuning = {
     maxHandPerDevour: 1,
     huskOptions: 2,
     venomTwin: true,
+    /** Devouring stops growing the body here (the husk still joins the deck). */
+    maxHandCap: 30,
+    /** Skipping a devour pays this much glint and mends a scar. */
+    skipGlint: 25,
+  },
+  foes: {
+    /** HP multipliers by act, so a grown body can't clear every room before it acts. */
+    normalHp: [1, 1.4, 1.6],
+    eliteHp: [1, 1.2, 1.4],
+    /** Prey grows with the predator: normal and elite HP +this share per max hand above `sizeFrom`. */
+    hpPerSize: 0.05,
+    sizeFrom: 12,
+    /** From this turn on, normal and elite foes gain +1 wound per hit at the end of each of their turns. */
+    frenzyFrom: 6,
   },
   economy: {
     glintFight: [12, 20] as [number, number],

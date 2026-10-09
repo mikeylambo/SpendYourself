@@ -297,6 +297,7 @@ button { font: inherit; color: inherit; }
 /* ---------- plates (rest, event, shop, reward) ---------- */
 .plate-screen { flex: 1; overflow-y: auto; display: flex; flex-direction: column; align-items: center; padding: 16px 16px calc(24px + var(--safe-b)); gap: 18px; }
 .plate-screen h1 { font-family: var(--f-poster); text-transform: uppercase; font-weight: 600; letter-spacing: 0.06em; font-size: clamp(34px, 8vw, 60px); margin: 8px 0 0; line-height: 0.95; }
+.plate-screen .note { margin: 0; max-width: 40ch; text-align: center; color: var(--bone-dim); font-size: 0.95em; }
 .plate-screen .lines { font-size: 1.2em; max-width: 34ch; text-align: center; font-style: italic; color: var(--bone-dim); }
 .choices { display: flex; flex-direction: column; gap: 10px; width: min(420px, 100%); }
 .choices .btn { text-align: left; }

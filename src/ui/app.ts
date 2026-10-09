@@ -33,7 +33,7 @@ const PROMPTS: Record<string, string> = {
 };
 const MOLTS: MoltId[] = ["venom", "tide", "storm"];
 const MOLT_INFO: Record<MoltId, { name: string; play: string; passive: string; unlock: string }> = {
-  venom: { name: "Venom", play: "Poison, devour, grow huge", passive: "Hunger: poisoned kills leave twin husks.", unlock: "" },
+  venom: { name: "Venom", play: "Poison, devour, grow huge", passive: "Hunger: poisoned kills leave twin husks. Your poison bites +1 harder each stratum down.", unlock: "" },
   tide: { name: "Tide", play: "Block, draw, thrive small", passive: "Undertow: at 3 cards or fewer, draw 1 more and wounds can't take your last card.", unlock: "Reach the Roots" },
   storm: { name: "Storm", play: "Hoard coil, one huge strike", passive: "Charge: coil caps at 5; two cards start each fight coiled.", unlock: "Defeat the Drowned Mouth" },
 };
@@ -539,7 +539,7 @@ export class App implements RunAgent, Presenter {
     el.querySelector(".core .left")!.innerHTML =
       (fc.incoming > 0 ? `<span class="plate forecast${fc.lethal ? " lethal" : ""}${fc.landed === 0 ? " safe" : ""}" title="Wounds that land when you end your turn">${icon("claw")}${fc.landed === 0 ? "0" : `−${fc.landed}`}${fc.lethal ? `<em>lethal</em>` : ""}</span>` : "") +
       (b.block ? `<span class="plate">${icon("shield")}${b.block >= 99 ? "∞" : b.block}</span>` : "") +
-      (big && c.bigActive() ? `<span class="plate big" title="Big: every hit lands one more wound">${icon("scale")}+1</span>` : "") +
+      (big && c.bigActive() ? `<span class="plate big" title="Big: every hit lands ${c.bigExtra()} more wound${c.bigExtra() > 1 ? "s" : ""}">${icon("scale")}+${c.bigExtra()}</span>` : "") +
       (s.selfPoison ? `<span class="plate pz">${icon("drop")}${s.selfPoison}</span>` : "");
     el.querySelector(".core .right")!.innerHTML = `<button class="pile" data-pile="draw" title="Draw pile">${icon("draw")}${b.draw.length}</button><button class="pile" data-pile="discard" title="Discard pile">${icon("discard")}${b.discard.length}</button><span class="pile" title="Max hand">${icon("scale")}${b.hand.length}/${b.maxHand}</span>`;
     el.querySelectorAll<HTMLElement>("[data-pile]").forEach((p) => p.addEventListener("click", () => this.showPile(p.dataset.pile as "draw" | "discard")));
@@ -561,7 +561,7 @@ export class App implements RunAgent, Presenter {
         case "atk": {
           const hits = c.attackHits(f, a.x ?? 1);
           const v = c.attackValue(f, a.n);
-          const bigPlus = c.bigActive() ? `<span class="plus">+1</span>` : "";
+          const bigPlus = c.bigActive() ? `<span class="plus">+${c.bigExtra()}</span>` : "";
           return `<span class="act" title="Wounds">${icon(hits > 1 ? "elite" : "claw")}${v}${hits > 1 ? `×${asc(this.run?.ascension ?? 0, 3) ? "?" : hits}` : ""}${bigPlus}</span>`;
         }
         case "eat": return `<span class="act" title="Eats your highest-coil card">${icon("maw")}${(a.x ?? 1) > 1 ? `×${a.x}` : ""}</span>`;
@@ -623,13 +623,13 @@ export class App implements RunAgent, Presenter {
       const intent = n.querySelector(".intent")!;
       intent.innerHTML = f.alive ? (f.skip > 0 ? `<span class="act">${icon("rest")}</span>` : this.intentHTML(c, f, f.intent)) + (f.alive && (lens || f.revealed > 0) ? this.intentHTML(c, f, c.peekIntent(f), true) : "") : "";
       n.querySelector<HTMLElement>(".hpbar i")!.style.width = `${Math.max(0, (f.hp / f.max) * 100)}%`;
-      const pz = Math.min(f.hp, f.poison);
+      const pz = Math.min(f.hp, c.poisonTick(f));
       const bEl = n.querySelector<HTMLElement>(".hpbar b")!;
       bEl.style.left = `${Math.max(0, ((f.hp - pz) / f.max) * 100)}%`;
       bEl.style.right = `${100 - Math.max(0, (f.hp / f.max) * 100)}%`;
       n.querySelector(".hpnum")!.innerHTML = `${Math.max(0, f.hp)}/${f.max}${f.block ? ` <span>${icon("shield").replace("<svg", '<svg style="width:14px;height:14px"')}${f.block}</span>` : ""}`;
       n.querySelector(".status")!.innerHTML = [
-        f.poison ? `<span class="pz" title="Poison">${icon("drop")}${f.poison}${f.slowRot ? "∞" : ""}</span>` : "",
+        f.poison ? `<span class="pz" title="Poison: ${c.poisonTick(f)} damage at the start of its turn">${icon("drop")}${f.poison}${f.slowRot ? "∞" : ""}</span>` : "",
         f.weak ? `<span title="Weakened">${icon("weak")}${f.weak}</span>` : "",
         f.str ? `<span title="Strength">${icon("buff")}${f.str}</span>` : "",
         f.mark ? `<span title="Marked">+${f.mark}</span>` : "",
@@ -1015,6 +1015,7 @@ export class App implements RunAgent, Presenter {
       case "foe.block":
       case "foe.buff":
       case "foe.heal":
+      case "foe.frenzy":
       case "poison.on":
       case "decoy":
         this.updateFight();
@@ -1132,6 +1133,7 @@ export class App implements RunAgent, Presenter {
     if (acts.includes("eat")) this.tip("eat");
     if (b.hand.some((x) => x.bound)) this.tip("bind");
     if (c.alive().some((f) => f.poison > 0)) this.tip("poison");
+    if (c.s.turn >= tuning.foes.frenzyFrom && c.alive().some((f) => FOES[f.id]!.tier !== "boss")) this.tip("frenzy");
   }
 
   private glossaryHTML(text: string): string {
@@ -1197,7 +1199,8 @@ export class App implements RunAgent, Presenter {
       <div class="loot"><span>${icon("glint")}+${sc.glint}</span>${sc.bone ? `<span>${boneGlyph(sc.bone).replace("<svg", '<svg style="width:22px;height:22px"')}${escapeHtml(BONES[sc.bone]?.name ?? "")}</span>` : ""}</div>
       <h1>${first ? "Devour one" : "Devour"}</h1>
       <div class="husk-row">${sc.husks.map((hk, i) => `<div class="husk">${staticCardHTML(hk.id, false, e, { attrs: `data-nav data-i="${i}"${i === 0 ? " data-autofocus" : ""}` })}${hk.twin ? `<span class="twin">×2</span>` : ""}</div>`).join("")}</div>
-      <button class="btn ghost" data-nav data-leave>${sc.devours > 0 && sc.husks.length ? "Skip" : "Descend"}</button>`);
+      ${run.maxHand >= tuning.devour.maxHandCap ? `<p class="note">Your body is full: a husk still joins your deck, but max hand no longer grows.</p>` : ""}
+      <button class="btn ghost" data-nav data-leave>${ctl.skipPays() ? `Stay lean · ${icon("glint")}+${tuning.devour.skipGlint}${run.scars ? " · mend 1" : ""}` : sc.devours > 0 && sc.husks.length ? "Skip" : "Descend"}</button>`);
     el.querySelectorAll<HTMLElement>(".husk .card").forEach((n) =>
       n.addEventListener("click", async () => {
         if (sc.devours <= 0) return;

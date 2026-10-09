@@ -41,6 +41,10 @@ export interface RunStats {
   cardsPlayed: number;
   woundsTaken: number;
   maxHandPeak: number;
+  /** Fights won before the enemy acted at all (a snowball signal). */
+  quickWins?: number;
+  /** Each won fight as [act, tier, turns taken, encounter] (sim pacing reports, run summary). */
+  fightTurns?: Array<[number, string, number, string?]>;
   devoured: string[];
   diedTo: string | null;
 }

@@ -28,11 +28,12 @@ for (let i = 0; i < args.length; i++) {
   o[keys.at(-1)!] = Number(val);
 }
 
-// Full-run pass bands at Turn 0 (slifer-tuning.md §9).
+// Full-run pass bands at Turn 0. Recalibrated after human playtests: a good player cleared the
+// old 25-45% bot tune with one-turn kills, so the bots now sit lower than the humans they stand in for.
 const BANDS: Record<string, [number, number]> = {
-  balanced: [0.25, 0.45],
-  spender: [0.08, 0.3],
-  hoarder: [0.08, 0.3],
+  balanced: [0.05, 0.4],
+  spender: [0, 0.3],
+  hoarder: [0, 0.35],
 };
 
 interface Result {
@@ -43,6 +44,8 @@ interface Result {
   maxHand: number;
   deck: string[];
   fights: number;
+  quick: number;
+  turns: Array<[number, string, number, string?]>;
 }
 
 const silent: Presenter = { emit: () => {} };
@@ -62,6 +65,8 @@ async function playRun(style: BotStyle, seed: number): Promise<Result> {
     maxHand: run.maxHand - run.scars,
     deck: run.deck.map((d) => d.id),
     fights: run.stats.fights,
+    quick: run.stats.quickWins ?? 0,
+    turns: run.stats.fightTurns ?? [],
   };
 }
 
@@ -91,6 +96,7 @@ for (const style of STYLES) {
     medianDeathRow: median(deaths.map((d) => d.row + 1)),
     avgMaxHandAtEnd: +(results.reduce((a, r) => a + r.maxHand, 0) / RUNS).toFixed(2),
     avgFights: +(results.reduce((a, r) => a + r.fights, 0) / RUNS).toFixed(2),
+    quickWinPct: +((results.reduce((a, r) => a + r.quick, 0) / Math.max(1, results.reduce((a, r) => a + r.fights, 0))) * 100).toFixed(1),
     deathsBy: Object.fromEntries(Object.entries(deathBy).sort((a, b) => b[1] - a[1])),
     stuck: results.filter((r) => r.reason === "stuck").length,
     topWinningCards: Object.entries(cardFreq)
@@ -99,8 +105,16 @@ for (const style of STYLES) {
       .slice(0, 8)
       .map(([id, n]) => `${id} ${Math.round((n / Math.max(1, wins.length)) * 100)}%`),
   };
+  // Pacing: average turns per fight and the one-turn share, by act and tier.
+  const pace: Record<string, string> = {};
+  for (const act of [1, 2, 3]) for (const tier of ["normal", "elite", "boss"]) {
+    const f = results.flatMap((r) => r.turns).filter(([a, t]) => a === act && t === tier);
+    if (f.length) pace[`${act}${tier[0]}`] = `${(f.reduce((x, [, , n]) => x + n, 0) / f.length).toFixed(1)}t/${Math.round((f.filter(([, , n]) => n === 1).length / f.length) * 100)}%`;
+  }
+  (stats as Record<string, unknown>).pace = pace;
   report[style] = stats;
-  console.log(`\n${style.padEnd(13)} win ${(winRate * 100).toFixed(1)}%  median death row ${stats.medianDeathRow}  max hand ${stats.avgMaxHandAtEnd}`);
+  console.log(`\n${style.padEnd(13)} win ${(winRate * 100).toFixed(1)}%  median death row ${stats.medianDeathRow}  max hand ${stats.avgMaxHandAtEnd}  one-turn fights ${stats.quickWinPct}%`);
+  console.log(`  pace (avg turns/one-turn%): ${Object.entries(pace).map(([k, v]) => `${k} ${v}`).join("  ")}`);
   console.log(`  deaths: ${JSON.stringify(stats.deathsBy)}`);
   console.log(`  top cards in wins: ${stats.topWinningCards.join(", ")}`);
   const band = BANDS[style];

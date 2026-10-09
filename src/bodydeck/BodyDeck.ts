@@ -50,6 +50,8 @@ export interface BodyState {
   mightBonus: number;
   /** True Size: might reads max hand instead of hand size. */
   trueSize: boolean;
+  /** Past this, every two cards add only one might (keeps damage from growing with the square of hand size). */
+  mightKnee?: number;
   /** Cards that left the hand to wounds or sacrifice this turn (for Recall). */
   woundedThisTurn: number[];
 }
@@ -90,7 +92,9 @@ export function shuffle<T>(items: T[], rng: Rng): T[] {
 
 /** Might: cards in hand (read after the played card has left). */
 export function might(b: BodyState): number {
-  return (b.trueSize ? b.maxHand : b.hand.length) + b.mightBonus;
+  const raw = (b.trueSize ? b.maxHand : b.hand.length) + b.mightBonus;
+  const knee = b.mightKnee ?? Infinity;
+  return raw > knee ? knee + Math.floor((raw - knee) / 2) : raw;
 }
 
 export const isBig = (b: BodyState): boolean => b.hand.length >= b.bigAt;

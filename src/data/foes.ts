@@ -36,7 +36,7 @@ const list: FoeDef[] = [
   {
     id: "boss.beetle_queen",
     name: "The Beetle Queen",
-    hp: 100,
+    hp: 85,
     act: 1,
     tier: "boss",
     husk: "card.swallow_whole",
