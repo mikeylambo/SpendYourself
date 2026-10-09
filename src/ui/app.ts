@@ -2,7 +2,7 @@ import { isBig, might } from "../bodydeck/BodyDeck.ts";
 import { BONE_LIST, BONES } from "../data/bones.ts";
 import { CARD_LIST, CARDS } from "../data/cards.ts";
 import { asc, TURNS } from "../data/turns.ts";
-import { glossaryFor, HOW_TO_PLAY, intentWords, TIPS } from "./guide.ts";
+import { GLOSSARY, glossaryFor, HOW_TO_PLAY, intentWords, TIPS } from "./guide.ts";
 import { EVENTS } from "../data/events.ts";
 import { FOES } from "../data/foes.ts";
 import { tuning } from "../data/tuning.ts";
@@ -80,6 +80,8 @@ export class App implements RunAgent, Presenter {
   private endArmed = 0;
   /** Card under the finger while sliding across the hand. */
   private peek: number | null = null;
+  /** The guided first fight: which step the player is on. */
+  private guided: string | null = null;
   private slid = false;
   private removal = new Map<number, string>();
   private deaths = new Map<number, number>();
@@ -425,6 +427,7 @@ export class App implements RunAgent, Presenter {
       <span class="stat" title="Max hand">${icon("scale")}${eff}${run.scars ? `<span class="scar">−${run.scars}</span>` : ""}</span>
       <button class="stat pile" data-deck title="Deck">${icon("draw")}${run.deck.length}</button>
       <span class="bones">${bones}</span>
+      ${run.bones.length ? `<button class="stat pile bones-count" data-bones title="Bones">${icon("bone")}${run.bones.length}</button>` : ""}
       <span class="sp"></span>
       <button class="icon-btn" data-pause aria-label="Menu">${icon("menu")}</button>
     </div>`;
@@ -433,9 +436,69 @@ export class App implements RunAgent, Presenter {
   private wireBar(el: HTMLElement): void {
     el.querySelector("[data-pause]")?.addEventListener("click", () => this.showPause());
     el.querySelector("[data-deck]")?.addEventListener("click", () => this.showDeck());
-    el.querySelectorAll<HTMLElement>("[data-bone]").forEach((b) =>
-      b.addEventListener("click", () => this.toast(`${BONES[b.dataset.bone!]?.name}: ${BONES[b.dataset.bone!]?.text}`)),
-    );
+    el.querySelectorAll<HTMLElement>("[data-bone]").forEach((b) => {
+      let held = false;
+      let timer = 0;
+      b.addEventListener("pointerdown", () => { held = false; timer = window.setTimeout(() => { held = true; this.showBones(b.dataset.bone); }, 450); });
+      b.addEventListener("pointerup", () => clearTimeout(timer));
+      b.addEventListener("pointerleave", () => clearTimeout(timer));
+      b.addEventListener("contextmenu", (e) => { e.preventDefault(); this.showBones(b.dataset.bone); });
+      b.addEventListener("click", () => { if (!held) this.toast(`${BONES[b.dataset.bone!]?.name}: ${BONES[b.dataset.bone!]?.text}`); });
+    });
+    el.querySelector("[data-bones]")?.addEventListener("click", () => this.showBones());
+  }
+
+  /** Why the run ended, in a sentence or two. */
+  private deathHTML(run: RunState): string {
+    const sc = run.screen;
+    if (sc.kind !== "over") return "";
+    const d = run.stats.death;
+    const names = (ids: string[]) => [...new Set(ids.map((id) => FOES[id]?.name ?? id))].join(" and ");
+    let text: string;
+    if (sc.reason === "worn") text = `Scars wore your max hand below ${tuning.body.wornAt}. Rest to mend, and end fights with 4 or more cards to avoid new scars.`;
+    else if (sc.reason === "spent") text = "You played your last card with enemies still standing. Keep at least one card back unless the play wins.";
+    else if (d) text = `Turn ${d.turn} against ${names(d.foes)}: ${d.wounds} wound${d.wounds > 1 ? "s" : ""} landed on a hand of ${d.hand}. The red claw by your might showed it coming; guards, a kill, or Weaken would have cut it.`;
+    else text = "Wounds took your last card.";
+    return `<div class="death-note"><h2>What happened</h2><p>${escapeHtml(text)}</p></div>`;
+  }
+
+  /** The body you ended with: deck and bones. */
+  private summaryHTML(run: RunState): string {
+    const counts = new Map<string, { n: number; up: number }>();
+    for (const d of run.deck) {
+      const c = counts.get(d.id) ?? { n: 0, up: 0 };
+      c.n++;
+      if (d.up) c.up++;
+      counts.set(d.id, c);
+    }
+    const cards = [...counts].sort((a, b) => (CARDS[a[0]]?.type ?? "").localeCompare(CARDS[b[0]]?.type ?? "") || a[0].localeCompare(b[0]));
+    return `<div class="run-summary"><h2>Your body · ${run.deck.length} cards</h2>
+      <div class="deck-chips">${cards.map(([id, c]) => `<span class="chip t-${CARDS[id]?.type ?? ""}">${escapeHtml(CARDS[id]?.name ?? id)}${c.up ? "+" : ""}${c.n > 1 ? ` ×${c.n}` : ""}</span>`).join("")}</div>
+      ${run.bones.length ? `<div class="deck-chips bones-row">${run.bones.map((b) => `<span class="chip" title="${escapeHtml(BONES[b]?.text ?? "")}">${boneGlyph(b)}${escapeHtml(BONES[b]?.name ?? b)}</span>`).join("")}</div>` : ""}
+      <p class="seed-line">Seed <b>${escapeHtml(run.seed)}</b></p></div>`;
+  }
+
+  /** Every bone you carry, with what it does. */
+  private showBones(focus?: string): void {
+    const run = this.run;
+    if (!run || this.overlayEl) return;
+    const el = h(`<div class="overlay"><h2>Your bones</h2><div class="bone-list">${run.bones.map((b) => `<div class="bone-row${b === focus ? " on" : ""}">${boneGlyph(b)}<div><b>${escapeHtml(BONES[b]?.name ?? b)}</b><span>${escapeHtml(BONES[b]?.text ?? "")}</span></div></div>`).join("") || "<p>No bones yet.</p>"}</div><button class="btn" data-nav data-autofocus data-close>${icon("back")}</button></div>`);
+    el.querySelector("[data-close]")!.addEventListener("click", () => this.closeOverlay());
+    this.openOverlay(el, () => this.closeOverlay());
+  }
+
+  /** Every keyword and enemy move in one place. */
+  private showGlossary(): void {
+    const intents = ["atk", "eat", "bind", "poison", "block", "buff", "summon", "heal", "daze", "thorns", "siren", "slime", "swallow"];
+    const el = h(`<div class="overlay"><h2>Glossary</h2><div class="glossary-page">
+      <dl class="gloss">${GLOSSARY.map(([, w, d]) => `<dt>${escapeHtml(w)}</dt><dd>${escapeHtml(d)}</dd>`).join("")}
+      <dt>Heavy</dt><dd>${escapeHtml(`Max hand ${tuning.body.heavyAt}+: draw 1 less each turn, but your bulk blocks ${tuning.body.heavyBlock} wound each enemy turn.`)}</dd>
+      <dt>Frenzy</dt><dd>From turn ${tuning.foes.frenzyFrom}, ordinary enemies hit 1 harder every turn.</dd></dl>
+      <h3>Enemy moves</h3>
+      <dl class="gloss">${intents.map((k) => `<dt>${icon(k === "atk" ? "claw" : k === "eat" ? "maw" : k === "bind" ? "knot" : k === "poison" ? "drop" : k === "block" ? "shield" : k === "summon" ? "egg" : k === "siren" ? "eye" : k === "slime" ? "sacrifice" : k)}</dt><dd>${escapeHtml(intentWords(k, 2, 1))}</dd>`).join("")}</dl>
+    </div><button class="btn" data-nav data-autofocus data-close>${icon("back")}</button></div>`);
+    el.querySelector("[data-close]")!.addEventListener("click", () => this.closeOverlay());
+    this.openOverlay(el, () => this.closeOverlay());
   }
 
   // ================= map =================
@@ -541,6 +604,10 @@ export class App implements RunAgent, Presenter {
       el.querySelector("[data-end]")!.addEventListener("click", () => void this.endTurn());
       this.setScreen(el, false);
       this.fightEl = el;
+      if (run.onboarding && run.fightIndex === 0 && !this.persist.taught("guided")) {
+        this.guided = "start";
+        for (const k of ["hand", "play", "might", "end", "wound", "forecast"]) this.persist.teach(`tip.${k}`);
+      }
       this.tip("hand");
       this.tip("play");
     }
@@ -593,6 +660,61 @@ export class App implements RunAgent, Presenter {
     end.disabled = !!s.over || c.busy || !!this.picking;
     this.renderBanner(el, c);
     this.audio.setBody(b.hand.length, b.maxHand);
+    if (this.guided) this.updateGuide(el, c);
+  }
+
+  /** Step-by-step first fight: a ring on the thing to touch and one line on what it does. */
+  private updateGuide(el: HTMLElement, c: Combat): void {
+    const s = c.s;
+    let step: string;
+    let target: Element | null = null;
+    let text = "";
+    if (s.over || (s.turn >= 2 && !this.picking)) step = "done";
+    else if (this.picking?.req.kind === "wound") {
+      step = "wound";
+      target = el.querySelector(".banner");
+      text = "Wounds landed. Each one costs a card: tap the cards you'll give up. Keep your best.";
+    } else if (s.playedThisTurn === 0 && this.sel === null) {
+      step = "pick";
+      const strike = c.body.hand.find((x) => CARDS[x.id]!.type === "strike" && c.canPlay(x));
+      target = strike ? el.querySelector(`.hand .card[data-uid="${strike.uid}"]`) : null;
+      text = `Every card is a scale of your body. Tap ${strike ? CARDS[strike.id]!.name : "a card"} to pick it up.`;
+    } else if (s.playedThisTurn === 0) {
+      step = "play";
+      target = el.querySelector(`.hand .card[data-uid="${this.sel}"]`);
+      text = "The enlarged card shows what it will do. Tap it again to play it.";
+    } else if (s.playedThisTurn === 1 && c.body.hand.length > 4 && c.alive().length) {
+      step = "more";
+      target = el.querySelector(".might");
+      text = `Might fell to ${might(c.body)}: every card you spend weakens the next hit. Play another, or hold.`;
+    } else {
+      step = "end";
+      target = el.querySelector("[data-end]");
+      const fc = c.forecast();
+      text = fc.landed ? `End your turn. The red claw says ${fc.landed} wound${fc.landed > 1 ? "s" : ""} will land; cards you keep coil and hit harder.` : "End your turn. Cards you keep coil and hit harder next turn.";
+    }
+    if (step === "done") {
+      this.guided = null;
+      this.persist.teach("guided");
+      el.querySelector(".guide-ring")?.remove();
+      return;
+    }
+    if (step !== this.guided) {
+      this.guided = step;
+      this.coach(text, true);
+    }
+    let ring = el.querySelector<HTMLElement>(".guide-ring");
+    if (!target) { ring?.remove(); return; }
+    if (!ring) { ring = h(`<div class="guide-ring" aria-hidden="true"></div>`); el.appendChild(ring); }
+    const place = () => {
+      if (!target!.isConnected || !ring!.isConnected) return;
+      const r = target!.getBoundingClientRect();
+      const o = el.getBoundingClientRect();
+      Object.assign(ring!.style, { left: `${r.left - o.left - 6}px`, top: `${r.top - o.top - 6}px`, width: `${r.width + 12}px`, height: `${r.height + 12}px` });
+    };
+    place();
+    // Cards slide in; place the ring again once they've landed.
+    setTimeout(place, 480);
   }
 
   /** One line under the enlarged card: what playing it would do. */
@@ -1347,6 +1469,7 @@ export class App implements RunAgent, Presenter {
     if (c.s.turn >= 2 && b.hand.some((x) => CARDS[x.id]!.type === "guard")) this.tip("block");
     const acts = c.alive().flatMap((f) => f.intent.map((a) => a.k));
     if (acts.includes("eat")) this.tip("eat");
+    for (const k of ["thorns", "siren", "slime", "swallow", "daze", "summon", "heal"] as const) if (acts.includes(k)) this.tip(k);
     if (b.hand.some((x) => x.bound)) this.tip("bind");
     if (c.alive().some((f) => f.poison > 0)) this.tip("poison");
     if (c.s.turn >= tuning.foes.frenzyFrom && c.alive().some((f) => FOES[f.id]!.tier !== "boss")) this.tip("frenzy");
@@ -1649,6 +1772,8 @@ export class App implements RunAgent, Presenter {
         <dt>Cards spent</dt><dd>${st.cardsPlayed}</dd>
         <dt>Wounds</dt><dd>${st.woundsTaken}</dd>
       </dl>
+      ${!sc.win ? this.deathHTML(run) : ""}
+      ${this.summaryHTML(run)}
       <div class="menu"><button class="btn solid" data-nav data-autofocus data-again>Descend again</button><button class="btn ghost" data-nav data-title>Title</button></div>
     </div></section>`);
     el.querySelector("[data-again]")!.addEventListener("click", () => {
@@ -1668,7 +1793,10 @@ export class App implements RunAgent, Presenter {
     const el = h(`<div class="overlay"><h2>Paused</h2><div class="menu">
       <button class="btn solid" data-nav data-autofocus data-resume>Resume</button>
       <button class="btn" data-nav data-settings>Settings</button>
+      <button class="btn" data-nav data-howto>How to play</button>
+      ${this.run.bones.length ? `<button class="btn" data-nav data-bones>Your bones</button>` : ""}
       <button class="btn" data-nav data-title>Save &amp; quit</button>
+      <p class="seed-line">Seed <b>${escapeHtml(this.run.seed)}</b>${this.run.ascension ? ` · Turn ${this.run.ascension}` : ""}</p>
       <button class="btn ghost" data-nav data-abandon>Abandon run</button>
     </div></div>`);
     const close = () => this.closeOverlay();
@@ -1677,6 +1805,11 @@ export class App implements RunAgent, Presenter {
       this.closeOverlay();
       this.openSettingsOverlay();
     });
+    el.querySelector("[data-howto]")!.addEventListener("click", () => {
+      this.closeOverlay();
+      this.showHowTo(() => { this.view = "run"; void this.render(); });
+    });
+    el.querySelector("[data-bones]")?.addEventListener("click", () => { this.closeOverlay(); this.showBones(); });
     el.querySelector("[data-title]")!.addEventListener("click", async () => {
       await this.save();
       this.ctl = null;
@@ -1714,6 +1847,7 @@ export class App implements RunAgent, Presenter {
       row("grain", "Paper grain", s.grain ? "On" : "Off"),
       row("tips", "Tips", s.tips ? "On" : "Off"),
       row("resetTips", "Show tips again", ""),
+      row("glossary", "Glossary", ""),
       row("fullscreen", "Fullscreen", document.fullscreenElement ? "On" : "Off"),
     ].join("");
   }
@@ -1737,6 +1871,9 @@ export class App implements RunAgent, Presenter {
         s.tips = true;
         await this.persist.saveMeta();
         break;
+      case "glossary":
+        this.showGlossary();
+        return;
       case "fullscreen":
         try {
           if (document.fullscreenElement) await document.exitFullscreen();

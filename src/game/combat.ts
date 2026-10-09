@@ -672,6 +672,7 @@ export class Combat {
         else if (undertow) wounds = Math.max(0, woundable.length - 1);
         else if (this.cheatDeath(false)) wounds = Math.max(0, woundable.length - 1);
         else {
+          this.run.stats.death = { turn: s.turn, wounds, hand: woundable.length, foes: this.alive().map((f) => f.id) };
           for (const c of [...woundable]) this.wound(c.uid);
           return this.lose("torn");
         }

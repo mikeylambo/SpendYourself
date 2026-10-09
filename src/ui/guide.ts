@@ -105,6 +105,14 @@ export const TIPS: Record<string, string> = {
   big: "Big: with 9+ cards you hit harder, but every hit on you lands one more wound.",
   poison: "Poison deals damage at the start of the enemy's turn, then fades by 1.",
   bind: "A knotted card can't be played this turn. It still counts for might.",
+  thorns: "Bristling: every card that hits this enemy this turn costs you a wound. Poison, block, or wait it out.",
+  siren: "Siren song: your next strike hits you instead. Spend a cheap strike first, or play guards.",
+  slime: "Slimed: your next card also costs Sacrifice 1.",
+  swallow: "Swallow: it takes a card from your draw pile for the rest of this fight.",
+  daze: "Dazed: you draw one card less next turn.",
+  summon: "The egg means it calls more enemies. Kill it fast or brace.",
+  heal: "It heals its allies. Kill the healer first, or burst through the heal.",
+  guided: "",
   frenzy: "Long fights make prey desperate: from turn 6, each enemy hits 1 harder every turn. Don't wait forever.",
 };
 
