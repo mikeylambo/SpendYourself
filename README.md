@@ -93,6 +93,16 @@ Every illustration is procedural until generated art lands. Drop files named by 
    hits it; Sirens make your next strike a wound to yourself; Coax redirects double the wounds as
    damage to another enemy; the Drowned Mouth swallows from your draw pile for the fight only.
 
+7. **Choices that matter** (refinement pass): scars cap at 2 per fight; Heavy blocks 1 wound a
+   turn (its upside for drawing 1 less); elites offer a choice of two bones; every act has a
+   Burrower in its back half; resting with 16+ cards sheds two; Shed at the Burrower costs 50.
+   Fang, Scale, Constrict and Hiss Strike have their own upgrades, and several strikes scale
+   harder with coil. New cards: wound triggers (Bitter Scale, Molting Pain), lost-body cards
+   (Reclaim, Phantom Limb) and spending cards for Venom (Empty Belly, Last Gasp) and Storm
+   (Spent Bolt, Eye of the Storm). Act 3 enemies each have a signature (daze, lure, pin, heal,
+   swallow, sting). The Tail turns your bones on you. A Give ending sends the Tail Scale into
+   your next run. All 30 events and 60 bones from the content doc are in.
+
 ## Known gaps / next
 
 - Balance (80 full runs per molt, balanced bot, after the snowball fix): Venom 11%, Storm 6–13%,

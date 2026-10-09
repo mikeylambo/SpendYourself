@@ -90,7 +90,7 @@ export function staticCardHTML(id: string, up: boolean, e: Combat, opts: CardVie
 export function breakdownHTML(card: BodyCard, e: Combat, inHand: boolean): string {
   const def = CARDS[card.id]!;
   const k = e.ctx(card, inHand);
-  const parts = [`<code>${escapeHtml(def.f)}</code>`];
+  const parts = [`<code>${escapeHtml(card.up && def.fu ? def.fu : def.f)}</code>`];
   parts.push(`might <b>${k.m}</b> · coil <b>${k.c}</b>${card.up ? " · upgraded" : ""}`);
   if (def.sac) parts.push(`Sacrifice: discard ${def.sac} of your choice first.`);
   if (def.shed) parts.push(`Shed: gone for the rest of the fight.`);

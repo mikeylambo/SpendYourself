@@ -155,6 +155,78 @@ const list: EventDef[] = [
     lines: "Nothing here. The earth is warm.",
     choices: [{ label: "Rest a moment", hint: "Block 3 next fight", apply: (o) => { o.run.nextFight.block += 3; } }],
   },
+  {
+    id: "event.still_water", title: "Still Water", act: [1, 2, 3],
+    lines: "Water so still you can see every scale of yourself, and which ones are tight.",
+    choices: [{ label: "Hold one still", hint: "A card starts every fight coiled 1", apply: async (o) => { const i = await o.chooseDeck("coil", () => true); if (i !== null) { const d = o.run.deck[i]!; d.coiled = Math.max(1, d.coiled ?? 0); } } }, leave],
+  },
+  {
+    id: "event.collapsed_tunnel", title: "Collapsed Tunnel", act: [1, 2, 3],
+    lines: "The way ahead is rubble. Something glints in it.",
+    choices: [
+      { label: "Dig through", hint: "1 scar · +30 glint", apply: (o) => { o.scar(1); o.glint(30); } },
+      { label: "Go around", hint: "Draw 1 less next fight", apply: (o) => { o.run.nextFight.draw -= 1; } },
+    ],
+  },
+  {
+    id: "event.choir_song", title: "Choir Song", act: [2],
+    lines: "A song comes up through the roots. Your fangs ache to it.",
+    choices: [{ label: "Listen", hint: "This act: strikes +1, guards −1", apply: (o) => { o.run.choirAct = o.run.act; } }, leave],
+  },
+  {
+    id: "event.lantern", title: "Lantern", act: [2, 3],
+    lines: "A lantern fish, long dead, still glowing.",
+    choices: [{ label: "Carry it", hint: "Next 3 fights: see two moves ahead", apply: (o) => { o.run.lanternFights = 3; } }, leave],
+  },
+  {
+    id: "event.parasite", title: "Parasite", act: [2, 3],
+    lines: "Something small offers to ride in your gut, and pay its way.",
+    choices: [{ label: "Let it in", hint: "+1 max hand · +50 glint · it bites each opening hand until you rest", apply: (o) => { o.maxHand(1); o.glint(50); o.run.parasite = true; } }, leave],
+  },
+  {
+    id: "event.sunken_altar", title: "Sunken Altar", act: [2, 3],
+    lines: "An altar under the water, with a bone-shaped hollow.",
+    choices: [{ label: "Give a bone", hint: "Lose a random bone · gain 2 rare cards", can: (r) => r.bones.length > 0, apply: (o) => { if (o.loseBone()) { o.addCard(o.randomCard("R")); o.addCard(o.randomCard("R")); } } }, leave],
+  },
+  {
+    id: "event.root_tea", title: "Root Tea", act: [1, 2],
+    lines: "Bitter sap pools in a cupped root.",
+    choices: [{ label: "Drink", hint: "Mend 1 scar · draw 1 less next fight", can: (r) => r.scars > 0, apply: (o) => { o.mend(1); o.run.nextFight.draw -= 1; } }, leave],
+  },
+  {
+    id: "event.spore_dream", title: "Spore Dream", act: [2],
+    lines: "You breathe the spores and dream of being something else.",
+    choices: [{ label: "Dream", hint: "Transform 2 cards into molt cards", can: (r) => r.deck.length > 6, apply: async (o) => { for (let n = 0; n < 2; n++) { const i = await o.chooseDeck("transform"); if (i === null) return; o.removeCard(i); o.addCard(o.randomCard(undefined, true)); } } }, leave],
+  },
+  {
+    id: "event.cracked_shell", title: "Cracked Shell", act: [1, 2, 3],
+    lines: "A shell split open, roomy inside. Smaller than you.",
+    choices: [{ label: "Squeeze in", hint: "This act: coil cap +1 · −1 max hand", can: (r) => r.maxHand - r.scars > 6, apply: (o) => { o.run.shellAct = o.run.act; o.maxHand(-1); } }, leave],
+  },
+  {
+    id: "event.old_serpent", title: "Old Serpent", act: [2, 3],
+    lines: "The shed skin of a serpent many times your size.",
+    choices: [{ label: "Wear its scale", hint: "Gain an upgraded molt card", apply: (o) => o.addCard(o.randomCard("U", true), true) }, leave],
+  },
+  {
+    id: "event.trapdoor", title: "Trapdoor", act: [1, 2],
+    lines: "The floor gives. Below, the tunnel carries on.",
+    choices: [
+      { label: "Drop", hint: "Skip the next room", apply: (o) => {
+        const run = o.run;
+        const cur = run.map.rows[run.row]?.find((n) => n.col === run.col);
+        const next = cur ? run.map.rows[run.row + 1]?.filter((n) => cur.next.includes(n.col) && n.kind !== "boss") ?? [] : [];
+        const to = next[Math.floor(o.rng() * next.length)];
+        if (to) { run.row = to.row; run.col = to.col; }
+      } },
+      leave,
+    ],
+  },
+  {
+    id: "event.mirror_of_tail", title: "Mirror of the Tail", act: [3],
+    lines: "In the black water: your own deck, held by something waiting at the bottom.",
+    choices: [{ label: "Take a card from it", hint: "Remove a card", can: (r) => r.deck.length > 5, apply: async (o) => { const i = await o.chooseDeck("remove"); if (i !== null) o.removeCard(i); } }, leave],
+  },
 ];
 
 export const EVENTS: Record<string, EventDef> = Object.fromEntries(list.map((e) => [e.id, e]));

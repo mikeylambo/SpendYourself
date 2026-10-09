@@ -25,7 +25,7 @@ export interface ShopStock {
 export type Screen =
   | { kind: "map" }
   | { kind: "combat"; combat: CombatState; node: NodeKind }
-  | { kind: "reward"; husks: Husk[]; devours: number; glint: number; bone: string | null; rare: boolean; node: NodeKind }
+  | { kind: "reward"; husks: Husk[]; devours: number; glint: number; bone: string | null; rare: boolean; node: NodeKind; boneOptions?: string[] }
   | { kind: "event"; id: string }
   | { kind: "shop"; stock: ShopStock }
   | { kind: "rest"; done: boolean }
@@ -77,6 +77,14 @@ export interface RunState {
   ringOfAshUsed: boolean;
   egg: number;
   actHuskBonus: number;
+  /** Husk Box: a husk saved for a later devour, and the act it was boxed in. */
+  huskBox?: { id: string; act: number } | null;
+  huskBoxAct?: number;
+  /** Event effects that last an act or a few fights. */
+  choirAct?: number;
+  shellAct?: number;
+  lanternFights?: number;
+  parasite?: boolean;
   screen: Screen;
   startedAt: number;
   /** Daily Descent date (YYYY-MM-DD) when this is the daily run. */

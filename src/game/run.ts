@@ -102,6 +102,12 @@ export function generateMap(act: number, rng: Rng, singleStart: boolean, ascensi
       }
     }
   }
+  // Always at least one Burrower in the back half, so every boss can be shopped for.
+  const backRows = grid.slice(tuning.map.treasureRow + 1, R - 1);
+  if (!backRows.some((row) => row.some((n) => n?.kind === "shop"))) {
+    const row = grid[R - 3]!.filter((n): n is MapNode => !!n && n.kind !== "rest");
+    if (row.length) row[Math.floor(rng.next() * row.length)]!.kind = "shop";
+  }
   // Turns 2 and 17 take rests away (never the one before the boss).
   let cut = (asc(ascension, 2) ? 1 : 0) + (asc(ascension, 17) ? 1 : 0);
   for (let r = 5; r < R - 1 && cut > 0; r++) {
@@ -237,7 +243,7 @@ export class RunController {
     const hand = s.body.hand.length;
     let scars = scarsFor(hand, tuning.body.scarFloor);
     if (this.has("bone.sap") && hand === 3) scars = 0;
-    this.scar(scars);
+    this.scar(Math.min(scars, tuning.body.scarCapPerFight));
     if (s.kind === "elite" && this.has("bone.mushroom")) this.mend(1);
     // Shed Skin wears out after two uses.
     run.deck = run.deck.filter((d) => !(d.id === "card.shed_skin" && (d.uses ?? 0) >= 2));
@@ -251,7 +257,12 @@ export class RunController {
     const glint = Math.round(base * (asc(run.ascension, 14) ? 0.75 : 1));
     run.glint += glint;
     let bone: string | null = null;
-    if (s.kind === "elite") bone = this.rollBone();
+    let boneOptions: string[] | undefined;
+    if (s.kind === "elite") {
+      const a = this.rollBone();
+      const b = this.rollBone([a]);
+      boneOptions = [a, b].filter(Boolean);
+    }
     if (s.kind === "boss") bone = BOSS_BONE[run.act] ?? null;
     if (run.egg > 0 && --run.egg === 0) bone = bone ?? this.rollBone();
     if (bone) this.gainBone(bone);
@@ -265,6 +276,7 @@ export class RunController {
       bone,
       rare: s.kind === "boss",
       node,
+      ...(boneOptions?.length ? { boneOptions } : {}),
     };
     return true;
   }
@@ -285,7 +297,12 @@ export class RunController {
       if (!out.some((x) => x.id === id)) out.push({ id, from: "", twin: false });
     }
     this.pendingRare = false;
-    return out.slice(0, Math.max(want, out.length));
+    const box = this.run.huskBox;
+    if (box && !out.some((x) => x.id === box.id)) {
+      out.push({ id: box.id, from: "box", twin: false });
+      this.run.huskBox = null;
+    }
+    return out.slice(0, Math.max(want + (out.some((x) => x.from === "box") ? 1 : 0), out.length));
   }
 
   devour(index: number): void {
@@ -319,9 +336,28 @@ export class RunController {
     return sc.kind === "reward" && sc.devours > 0 && sc.husks.length > 0 && sc.devours === (this.has("bone.black_pearl") ? 2 : 1);
   }
 
+  /** Elite reward: keep one of two bones. */
+  takeBone(i: number): void {
+    const sc = this.run.screen;
+    if (sc.kind !== "reward" || !sc.boneOptions?.length) return;
+    const id = sc.boneOptions[i];
+    if (!id) return;
+    this.gainBone(id);
+    sc.bone = id;
+    sc.boneOptions = [];
+  }
+
   leave(): void {
     const run = this.run;
     this.devourRitePending = false;
+    const sc0 = run.screen;
+    // An unchosen elite bone isn't lost by leaving: you get the first.
+    if (sc0.kind === "reward" && sc0.boneOptions?.length) this.takeBone(0);
+    // Husk Box: keep one husk you didn't eat, once per act.
+    if (sc0.kind === "reward" && this.has("bone.husk_box") && sc0.husks.length && !run.huskBox && run.huskBoxAct !== run.act) {
+      run.huskBox = { id: sc0.husks[0]!.id, act: run.act };
+      run.huskBoxAct = run.act;
+    }
     // Choosing not to eat: a little glint and a mended scar, so growing is a real choice.
     if (this.skipPays()) {
       run.glint += tuning.devour.skipGlint;
@@ -370,11 +406,19 @@ export class RunController {
       }
       if (!any) return false;
     } else {
-      const i = await this.agent.chooseDeck("remove", this.deckIndices());
-      if (i === null) return false;
-      run.deck.splice(i, 1);
+      // Thinning matters more as decks grow: a big deck sheds two.
+      const times = run.deck.length >= 16 ? 2 : 1;
+      let any = false;
+      for (let t = 0; t < times && run.deck.length > 5; t++) {
+        const i = await this.agent.chooseDeck("remove", this.deckIndices());
+        if (i === null) break;
+        run.deck.splice(i, 1);
+        any = true;
+      }
+      if (!any) return false;
     }
     if (this.has("bone.pebble")) run.nextFight.block += 3;
+    run.parasite = false;
     run.screen.done = true;
     void this.p.emit({ type: `rest.${choice}` });
     return true;

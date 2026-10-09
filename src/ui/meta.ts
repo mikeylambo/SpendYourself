@@ -88,6 +88,8 @@ export interface Meta {
   lastTurn: number;
   /** Daily Descent results by date. */
   daily: Record<string, { row: number; win: boolean }>;
+  /** A Give ending sends the Tail Scale into the next run. */
+  tailScale?: boolean;
 }
 
 export interface Settings {

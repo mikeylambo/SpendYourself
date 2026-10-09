@@ -21,8 +21,10 @@ async function play(run: RunState, seed: number, steps = 5000): Promise<RunState
 test("content references resolve", () => {
   for (const f of Object.values(FOES)) assert.ok(CARDS[f.husk], `${f.id} husk ${f.husk}`);
   for (const pools of Object.values(ENCOUNTERS)) for (const enc of Object.values(pools).flat()) for (const id of enc) assert.ok(FOES[id], id);
-  assert.equal(CARD_LIST.filter((c) => !c.molt && !c.special).length, 75);
-  for (const m of ["venom", "tide", "storm"]) assert.equal(CARD_LIST.filter((c) => c.molt === m).length, 30, m);
+  // The spec's 75 shared and 30 per molt, plus cards added after playtests.
+  assert.equal(CARD_LIST.filter((c) => !c.molt && !c.special).length, 79);
+  const molts: Record<string, number> = { venom: 32, tide: 30, storm: 32 };
+  for (const [m, n] of Object.entries(molts)) assert.equal(CARD_LIST.filter((c) => c.molt === m).length, n, m);
   assert.ok(EVENT_LIST.length >= 10);
 });
 

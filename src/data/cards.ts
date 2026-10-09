@@ -17,9 +17,30 @@ function C(id: string, name: string, type: CardType, rarity: Rarity, spec: Spec,
 const V = (id: string, name: string, type: CardType, rarity: Rarity, spec: Spec) => C(id, name, type, rarity, spec, "venom");
 
 // ================= Shared: strikes (22) =================
+// Losing body as power: cards that act when a wound takes them, and cards that count the discard pile.
+C("card.bitter_scale", "Bitter Scale", "guard", "C", {
+  f: "Block 2 + c. Lost to a wound: deal 4 + c to every enemy that attacked", n: (k) => [2 + k.c, 4 + k.c],
+  t: ([b, d]) => `Block ${b}. If a wound takes it: deal ${d} to each attacker.`, run: (k, [b]) => k.e.gainBlock(b!),
+  onWound: (e, card) => { for (const f of e.alive()) if (f.attackedLast) e.hit(f, 4 + card.coil); },
+});
+C("card.molting_pain", "Molting Pain", "body", "U", {
+  f: "Draw 1. Lost to a wound: draw 2 more next turn", n: () => [1, 2],
+  t: ([d, x]) => `Draw ${d}. If a wound takes it: draw ${x} more next turn.`, run: (k, [d]) => void k.e.draw(d!),
+  onWound: (e) => { e.body.nextDraw += 2; },
+});
+C("card.reclaim", "Reclaim", "strike", "U", {
+  tgt: true, f: "Deal 2 + c + 1 per 2 cards in your discard pile (lost body)",
+  n: (k) => [2 + k.c + h(k.e.body.discard.length)], t: ([d]) => `Deal ${d} (grows with your discard pile).`,
+  run: (k, [d]) => void k.e.hit(k.t, d!),
+});
+C("card.phantom_limb", "Phantom Limb", "guard", "U", {
+  f: "Block 1 + c + 1 per 3 cards in your discard pile",
+  n: (k) => [1 + k.c + third(k.e.body.discard.length)], t: ([b]) => `Block ${b} (grows with your discard pile).`,
+  run: (k, [b]) => k.e.gainBlock(b!),
+});
 C("card.fang", "Fang", "strike", "C", {
-  tgt: true, f: "Deal 2 + m/2 + 2c",
-  n: (k) => [2 + h(k.m) + 2 * k.c], t: ([d]) => `Deal ${d}.`, run: (k, [d]) => void k.e.hit(k.t, d!),
+  tgt: true, f: "Deal 2 + m/2 + 2c", fu: "Deal 2 + m/2 + 3c (upgraded: coil hits harder)", ownUpgrade: true,
+  n: (k) => [2 + h(k.m) + (2 + k.u) * k.c], t: ([d]) => `Deal ${d}.`, run: (k, [d]) => void k.e.hit(k.t, d!),
 });
 C("card.lash", "Lash", "strike", "C", {
   f: "Deal 1 + m/3 + c to all enemies",
@@ -35,8 +56,8 @@ C("card.snap", "Snap", "strike", "C", {
   n: (k) => [4 + k.c], t: ([d]) => `Deal ${d}. Shed.`, run: (k, [d]) => void k.e.hit(k.t, d!),
 });
 C("card.constrict", "Constrict", "strike", "C", {
-  tgt: true, f: "Deal 2 + c; Weaken 1",
-  n: (k) => [2 + k.c], t: ([d]) => `Deal ${d}. Weaken 1.`, run: (k, [d]) => { k.e.hit(k.t, d!); k.e.weaken(k.t, 1); },
+  tgt: true, f: "Deal 2 + 2c; Weaken 1 + c/2", fu: "Deal 3 + 2c; Weaken 2 + c/2", ownUpgrade: true,
+  n: (k) => [2 + k.u + 2 * k.c, 1 + k.u + h(k.c)], t: ([d, w]) => `Deal ${d}. Weaken ${w}.`, run: (k, [d, w]) => { k.e.hit(k.t, d!); k.e.weaken(k.t, w!); },
 });
 C("card.tail_whip", "Tail Whip", "strike", "C", {
   f: "Deal 3 + c to a random enemy twice",
@@ -44,8 +65,8 @@ C("card.tail_whip", "Tail Whip", "strike", "C", {
   run: (k, [d, x]) => { for (let i = 0; i < x!; i++) k.e.hitRandom(d!); },
 });
 C("card.gnash", "Gnash", "strike", "C", {
-  tgt: true, f: "Deal 2 + m/2. If the target attacked last turn, deal it again",
-  n: (k) => [2 + h(k.m) + k.c], t: ([d]) => `Deal ${d}. Again if it attacked last turn.`,
+  tgt: true, f: "Deal 2 + m/2 + 2c. If the target attacked last turn, deal it again",
+  n: (k) => [2 + h(k.m) + 2 * k.c], t: ([d]) => `Deal ${d}. Again if it attacked last turn.`,
   run: (k, [d]) => { const again = k.t?.attackedLast; k.e.hit(k.t, d!); if (again) k.e.hit(k.t, d!); },
 });
 C("card.lunge", "Lunge", "strike", "C", {
@@ -58,9 +79,9 @@ C("card.rake", "Rake", "strike", "C", {
   run: (k, [d, x]) => { for (let i = 0; i < x!; i++) k.e.hit(k.t?.alive ? k.t : k.e.target(), d!); },
 });
 C("card.hiss_strike", "Hiss Strike", "strike", "C", {
-  tgt: true, f: "Deal 3 + m/3; draw 1 if it kills",
-  n: (k) => [3 + third(k.m) + k.c], t: ([d]) => `Deal ${d}. If it kills, draw 1.`,
-  run: (k, [d]) => { if (k.e.hit(k.t, d!).killed) k.e.draw(1); },
+  tgt: true, f: "Deal 3 + m/3 + 2c; draw 1 if it kills", fu: "Deal 3 + m/3 + 2c; draw 2 if it kills", ownUpgrade: true,
+  n: (k) => [3 + third(k.m) + 2 * k.c, 1 + k.u], t: ([d, x]) => `Deal ${d}. If it kills, draw ${x}.`,
+  run: (k, [d, x]) => { if (k.e.hit(k.t, d!).killed) k.e.draw(x!); },
 });
 C("card.gorge", "Gorge", "strike", "U", {
   tgt: true, f: "Deal m + 2c",
@@ -135,7 +156,8 @@ C("card.circle_strike", "Circle Strike", "strike", "R", {
 
 // ================= Shared: guards (16) =================
 C("card.scale", "Scale", "guard", "C", {
-  f: "Block 2 + c", n: (k) => [2 + k.c], t: ([b]) => `Block ${b}.`, run: (k, [b]) => k.e.gainBlock(b!),
+  f: "Block 2 + c", fu: "Block 2 + 2c (upgraded: coil guards twice as well)", ownUpgrade: true,
+  n: (k) => [2 + (1 + k.u) * k.c], t: ([b]) => `Block ${b}.`, run: (k, [b]) => k.e.gainBlock(b!),
 });
 C("card.harden", "Harden", "guard", "C", {
   f: "Block 1 + m/4 + c", n: (k) => [1 + quarter(k.m) + k.c], t: ([b]) => `Block ${b}.`, run: (k, [b]) => k.e.gainBlock(b!),
@@ -397,6 +419,17 @@ C("card.close_the_ring", "Close the Ring", "rite", "X", {
 });
 
 // ================= Venom (30) =================
+V("venom.empty_belly", "Empty Belly", "strike", "C", {
+  tgt: true, f: "Deal 3 + c. With 3 or fewer cards left: also Poison 5 + c",
+  n: (k) => [3 + k.c, k.e.body.hand.length <= 3 ? 5 + k.c : 0],
+  t: ([d, p]) => (p ? `Deal ${d}. Poison ${p}.` : `Deal ${d}. At 3 cards or fewer: Poison too.`),
+  run: (k, [d, p]) => { k.e.hit(k.t, d!); if (p) k.e.poison(k.t, p); },
+});
+V("venom.last_gasp", "Last Gasp", "rite", "U", {
+  f: "Poison all enemies 2 + 2 per card below 5 in hand",
+  n: (k) => [2 + 2 * Math.max(0, 5 - k.e.body.hand.length) + k.c], t: ([p]) => `Poison all enemies ${p} (more the emptier you are).`,
+  run: (k, [p]) => { for (const f of k.e.alive()) k.e.poison(f, p!); },
+});
 V("venom.drip", "Drip", "rite", "C", { tgt: true, f: "Poison 3 + c", n: (k) => [3 + k.c], t: ([p]) => `Poison ${p}.`, run: (k, [p]) => k.e.poison(k.t, p!) });
 V("venom.fester", "Fester", "rite", "C", {
   tgt: true, f: "Double the target's poison", n: (k) => [k.t?.poison ?? 0, k.c], ownUpgrade: true,
@@ -683,6 +716,16 @@ S("storm.ground", "Ground", "rite", "C", {
 S("storm.arc", "Arc", "strike", "C", {
   tgt: true, f: "Deal 2 + c, then 2 + c to a different enemy", n: (k) => [2 + k.c], t: ([d]) => `Deal ${d}, then ${d} to another enemy.`,
   run: (k, [d]) => { k.e.hit(k.t, d!); const o = k.e.alive().find((f) => f !== k.t); k.e.hit(o ?? k.e.target(), d!); },
+});
+S("storm.spent_bolt", "Spent Bolt", "strike", "C", {
+  tgt: true, f: "Deal 2 per card you played this turn, + c",
+  n: (k) => [2 * k.e.s.playedThisTurn + k.c], t: ([d]) => `Deal ${d} (2 per card played this turn).`,
+  run: (k, [d]) => void k.e.hit(k.t, d!),
+});
+S("storm.eye_of_the_storm", "Eye of the Storm", "strike", "U", {
+  f: "Deal 3 to all enemies. With 3 or fewer cards left: 9 + 2c instead",
+  n: (k) => [k.e.body.hand.length <= 3 ? 9 + 2 * k.c : 3], t: ([d]) => `Deal ${d} to all enemies. Stronger at 3 cards or fewer.`,
+  run: (k, [d]) => k.e.hitAll(d!),
 });
 S("storm.anvil", "Anvil", "guard", "C", { f: "Block 2 + c; Coiled: Block 5 + c", n: (k) => [(coiled(k) ? 5 : 2) + k.c], t: ([b]) => `Block ${b}. Coiled: 5 + coil.`, run: (k, [b]) => k.e.gainBlock(b!) });
 S("storm.bolt", "Bolt", "strike", "U", { tgt: true, f: "Deal 4 + 4c", n: (k) => [4 + 4 * k.c], t: ([d]) => `Deal ${d}.`, run: (k, [d]) => void k.e.hit(k.t, d!) });

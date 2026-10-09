@@ -123,11 +123,13 @@ export interface CombatState {
   /** Per-fight counters for molt and enemy mechanics (missing keys read as 0). */
   n?: Record<string, number>;
   /** The Tail plays a copy of your deck. */
-  tail?: { draw: string[]; discard: string[]; ringGiven: boolean };
+  tail?: { draw: string[]; discard: string[]; ringGiven: boolean; bones?: string[]; bone?: string };
   ending?: "devour" | "give";
 }
 
 export interface DeckCard {
+  /** Starts every fight with this much coil (Still Water). */
+  coiled?: number;
   id: string;
   up: boolean;
   uses?: number;

@@ -64,14 +64,14 @@ const list: FoeDef[] = [
   { id: "boss.choir_bloom", name: "Choir Head", hp: 45, act: 2, tier: "boss", husk: "card.circle_strike", pattern: [I(HEAL(6)), I(W(2)), I(BUFF(1, true))], onDeath: "choir" },
 
   // Act 3: The Deep Water
-  { id: "foe.blind_eel", name: "Blind Eel", hp: 22, act: 3, tier: "normal", husk: "card.lash", pattern: [I(W(3)), I(W(1, 3))] },
-  { id: "foe.lantern_angler", name: "Lantern Angler", hp: 20, act: 3, tier: "normal", husk: "card.lure", pattern: [I(EAT()), I(W(4))] },
-  { id: "foe.pressure_crab", name: "Pressure Crab", hp: 30, act: 3, tier: "normal", husk: "card.shell_scale", pattern: [I(BLOCK(8)), I(W(5))] },
-  { id: "foe.drowned_choir", name: "Drowned Choir", hp: 18, act: 3, tier: "normal", husk: "card.great_rattle", pattern: [I(BUFF(2, true)), I(W(2))] },
-  { id: "foe.hagfish", name: "Hagfish", hp: 16, act: 3, tier: "normal", husk: "card.digest", pattern: [I(SLIME, W(1)), I(W(3))] },
-  { id: "foe.siphon", name: "Siphon", hp: 24, act: 3, tier: "normal", husk: "card.regrow", pattern: [I(EAT(2)), I(W(2))] },
-  { id: "foe.abyss_jelly", name: "Abyss Jelly", hp: 28, act: 3, tier: "normal", husk: "venom.drip", pattern: [I(POISON(3)), I(W(2, 2))] },
-  { id: "foe.trench_shark", name: "Trench Shark", hp: 34, act: 3, tier: "normal", husk: "card.gorge", pattern: [I(BUFF(3)), I(W(7)), I(W(2))] },
+  { id: "foe.blind_eel", name: "Blind Eel", hp: 22, act: 3, tier: "normal", husk: "card.lash", pattern: [I(W(3)), I(DAZE, W(1, 3))] },
+  { id: "foe.lantern_angler", name: "Lantern Angler", hp: 20, act: 3, tier: "normal", husk: "card.lure", pattern: [I(SIREN, W(1)), I(EAT()), I(W(4))] },
+  { id: "foe.pressure_crab", name: "Pressure Crab", hp: 30, act: 3, tier: "normal", husk: "card.shell_scale", pattern: [I(BLOCK(8), BIND()), I(W(5))] },
+  { id: "foe.drowned_choir", name: "Drowned Choir", hp: 18, act: 3, tier: "normal", husk: "card.great_rattle", pattern: [I(BUFF(2, true)), I(HEAL(5)), I(W(2, 2))] },
+  { id: "foe.hagfish", name: "Hagfish", hp: 16, act: 3, tier: "normal", husk: "card.digest", pattern: [I(SLIME, W(1)), I(SLIME, W(2)), I(W(3))] },
+  { id: "foe.siphon", name: "Siphon", hp: 24, act: 3, tier: "normal", husk: "card.regrow", pattern: [I(SWALLOW, W(1)), I(EAT(2)), I(W(2))] },
+  { id: "foe.abyss_jelly", name: "Abyss Jelly", hp: 28, act: 3, tier: "normal", husk: "venom.drip", pattern: [I(POISON(3), THORNS), I(W(2, 2))] },
+  { id: "foe.trench_shark", name: "Trench Shark", hp: 34, act: 3, tier: "normal", husk: "card.gorge", pattern: [I(W(2)), I(BUFF(3)), I(W(7))] },
   // Act 3 elites
   { id: "elite.giant_isopod", name: "Giant Isopod", hp: 90, act: 3, tier: "elite", husk: "card.patient_ring", pattern: [I(BLOCK(15)), I(W(5)), I(W(5))] },
   { id: "elite.siren", name: "Siren", hp: 30, act: 3, tier: "elite", husk: "card.blind", pattern: [I(SIREN, W(1)), I(W(4))], stagger: true },

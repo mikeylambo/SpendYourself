@@ -31,6 +31,10 @@ export interface CardDef {
   /** Live numbers; the first gains +1 when upgraded unless `ownUpgrade`. */
   n?: (k: CardCtx) => number[];
   ownUpgrade?: boolean;
+  /** Formula once upgraded, when the upgrade is more than +1. */
+  fu?: string;
+  /** Fires when a wound takes this card from the hand. */
+  onWound?: (e: import("./combat.ts").Combat, card: import("../bodydeck/BodyDeck.ts").BodyCard) => void;
   /** Player-facing text with live numbers. */
   t: (v: number[], k: CardCtx) => string;
   run: (k: CardCtx, v: number[]) => void | Promise<void>;

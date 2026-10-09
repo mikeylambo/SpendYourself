@@ -18,6 +18,10 @@ export const tuning = {
     coilCap: 3,
     stormCoilCap: 5,
     scarFloor: 4, // end a fight below this many cards: one scar per card short
+    /** At most this many scars from one fight, so one bad fight doesn't snowball. */
+    scarCapPerFight: 2,
+    /** Heavy's upside: your mass blocks this many wounds each enemy turn. */
+    heavyBlock: 1,
     wornAt: 4, // effective max hand below this ends the run
   },
   /** Wound-choice pressure (slifer-tuning.md §9): extra cards each eat and bind intent takes. */
@@ -52,7 +56,7 @@ export const tuning = {
     cardPrice: { C: 45, U: 70, R: 140 } as Record<string, number>,
     bonePrice: [150, 300] as [number, number],
     mendPrice: 60,
-    shedPrice: 75,
+    shedPrice: 50,
     shedStep: 25,
     restMend: 2,
   },

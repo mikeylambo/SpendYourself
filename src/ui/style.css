@@ -568,3 +568,13 @@ button { font: inherit; color: inherit; }
 .inspect .why { display: flex; gap: 8px; align-items: center; color: var(--vermilion); margin: 0 0 8px; }
 .inspect .why svg { width: 18px; height: 18px; flex: 0 0 auto; }
 .inspect .dim { opacity: 0.6; }
+
+/* Elite reward: keep one of two bones. */
+.bone-pick-h { text-align: center; }
+.bone-pick { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; width: min(560px, 100%); }
+.bone-opt { appearance: none; background: var(--ink); color: var(--bone); border: 1.5px solid var(--bone-dim); padding: 14px; display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; cursor: pointer; font: inherit; }
+.bone-opt svg { width: 40px; height: 40px; }
+.bone-opt b { font-family: var(--f-poster); text-transform: uppercase; letter-spacing: 0.1em; font-weight: 600; }
+.bone-opt span { color: var(--bone-dim); font-size: 0.92em; }
+.bone-opt:hover, .bone-opt:focus-visible, .bone-opt[data-focus="1"] { border-color: var(--gold); outline: none; }
+.husk .twin.boxed { background: var(--gold); color: var(--ink); }

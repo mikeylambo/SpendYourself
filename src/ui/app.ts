@@ -31,6 +31,7 @@ const PROMPTS: Record<string, string> = {
   remove: "Remove a card",
   duplicate: "Duplicate a card",
   give: "Give a card",
+  transform: "Transform a card",
 };
 const MOLTS: MoltId[] = ["venom", "tide", "storm"];
 const MOLT_INFO: Record<MoltId, { name: string; play: string; passive: string; unlock: string }> = {
@@ -356,6 +357,12 @@ export class App implements RunAgent, Presenter {
   }
 
   startRun(run: RunState): void {
+    const meta = this.persist.meta;
+    if (meta.tailScale && !run.daily && run.fightIndex === 0 && run.row < 0 && run.act === 1 && !run.bones.includes("bone.tail_scale")) {
+      run.bones.push("bone.tail_scale");
+      meta.tailScale = false;
+      void this.persist.saveMeta();
+    }
     this.ctl = new RunController(run, this, this);
     this.view = "run";
     this.audio.unlock();
@@ -671,7 +678,7 @@ export class App implements RunAgent, Presenter {
     const keep = new Set(shown.map((f) => f.uid));
     wrap.querySelectorAll<HTMLElement>(".foe").forEach((n) => { if (!keep.has(Number(n.dataset.uid))) n.remove(); });
     const target = c.target();
-    const lens = c.has("bone.lens") || this.s.intentDetail;
+    const lens = c.has("bone.lens") || this.s.intentDetail || c.n("lantern") > 0;
     // Foes act left to right; number them when more than one will act.
     const actors = c.alive().filter((f) => f.skip <= 0 && !c.diesToPoison(f) && f.intent.some((a) => a.k !== "rest"));
     const order = new Map(actors.map((f, i) => [f.uid, i + 1]));
@@ -1163,6 +1170,14 @@ export class App implements RunAgent, Presenter {
       case "enemy.turn":
         this.woundLog.clear();
         return;
+      case "parasite":
+        this.toast(`The parasite ate ${CARDS[ev.id as string]?.name ?? "a card"}`);
+        this.updateFight();
+        return wait(this.ms(300));
+      case "card.lostPower":
+        this.toast(`${CARDS[ev.id as string]?.name ?? ""} bites back`);
+        this.updateFight();
+        return wait(this.ms(200));
       case "poison.self":
         if (this.woundLog) this.woundLog.set("Poison", (this.woundLog.get("Poison") ?? 0) + 1);
         return;
@@ -1352,7 +1367,7 @@ export class App implements RunAgent, Presenter {
       const x = a.k === "atk" ? c.attackHits(f, a.x ?? 1) : "x" in a ? a.x : undefined;
       return intentWords(a.k, n, x);
     }).join(", ");
-    const lens = c.has("bone.lens") || this.s.intentDetail || f.revealed > 0;
+    const lens = c.has("bone.lens") || this.s.intentDetail || f.revealed > 0 || c.n("lantern") > 0;
     const status = [
       f.block ? `Block ${f.block}` : "",
       f.poison ? `Poison ${f.poison}${f.slowRot ? " (not fading)" : ""}` : "",
@@ -1373,7 +1388,7 @@ export class App implements RunAgent, Presenter {
         ${lens ? `<p><b>Then:</b> ${escapeHtml(words(c.peekIntent(f)))}</p>` : ""}
         ${patternHTML}
         ${def.onDeath === "wasp" ? "<p>When one dies, the rest grow stronger.</p>" : def.onDeath === "split" ? "<p>Splits in two when it dies.</p>" : def.onDeath === "choir" ? "<p>Killing a head makes the others stronger.</p>" : ""}
-        ${f.id === "boss.tail" ? "<p>It plays a copy of your deck.</p>" : ""}
+        ${f.id === "boss.tail" ? `<p>It plays a copy of your deck${c.s.tail?.bones?.length ? " and turns your bones on you" : ""}.</p>${c.s.tail?.bone ? `<p><b>This turn:</b> your ${escapeHtml(BONES[c.s.tail.bone]?.name ?? "")}</p>` : ""}` : ""}
       </div></div><button class="btn" data-nav data-autofocus data-close>${icon("back")}</button></div>`);
     el.addEventListener("click", () => this.closeOverlay());
     this.openOverlay(el, () => this.closeOverlay());
@@ -1404,10 +1419,19 @@ export class App implements RunAgent, Presenter {
     this.markSeen(sc.husks.map((x) => x.id));
     const el = this.plate(`
       <div class="loot"><span>${icon("glint")}+${sc.glint}</span>${sc.bone ? `<span>${boneGlyph(sc.bone).replace("<svg", '<svg style="width:22px;height:22px"')}${escapeHtml(BONES[sc.bone]?.name ?? "")}</span>` : ""}</div>
+      ${sc.boneOptions?.length ? `<h2 class="bone-pick-h">Keep one bone</h2><div class="bone-pick">${sc.boneOptions.map((b, i) => `<button class="bone-opt" data-nav data-bone-i="${i}">${boneGlyph(b)}<b>${escapeHtml(BONES[b]?.name ?? b)}</b><span>${escapeHtml(BONES[b]?.text ?? "")}</span></button>`).join("")}</div>` : ""}
       <h1>${first ? "Devour one" : "Devour"}</h1>
-      <div class="husk-row">${sc.husks.map((hk, i) => `<div class="husk">${staticCardHTML(hk.id, false, e, { attrs: `data-nav data-i="${i}"${i === 0 ? " data-autofocus" : ""}` })}${hk.twin ? `<span class="twin">×2</span>` : ""}</div>`).join("")}</div>
+      <div class="husk-row">${sc.husks.map((hk, i) => `<div class="husk">${staticCardHTML(hk.id, false, e, { attrs: `data-nav data-i="${i}"${i === 0 ? " data-autofocus" : ""}` })}${hk.twin ? `<span class="twin">×2</span>` : ""}${hk.from === "box" ? `<span class="twin boxed">boxed</span>` : ""}</div>`).join("")}</div>
       ${run.maxHand >= tuning.devour.maxHandCap ? `<p class="note">Your body is full: a husk still joins your deck, but max hand no longer grows.</p>` : ""}
       <button class="btn ghost" data-nav data-leave>${ctl.skipPays() ? `Stay lean · ${icon("glint")}+${tuning.devour.skipGlint}${run.scars ? " · mend 1" : ""}` : sc.devours > 0 && sc.husks.length ? "Skip" : "Descend"}</button>`);
+    el.querySelectorAll<HTMLElement>("[data-bone-i]").forEach((n) =>
+      n.addEventListener("click", async () => {
+        this.ui();
+        ctl.takeBone(Number(n.dataset.boneI));
+        await this.save();
+        this.renderReward();
+      }),
+    );
     el.querySelectorAll<HTMLElement>(".husk .card").forEach((n) =>
       n.addEventListener("click", async () => {
         if (sc.devours <= 0) return;
@@ -1545,6 +1569,8 @@ export class App implements RunAgent, Presenter {
     if (sc.win) meta.wins++;
     meta.bestRow = Math.max(meta.bestRow, run.row + 1 + (run.act - 1) * 16);
     meta.history.unshift({ at: Date.now(), molt: run.molt, win: sc.win, reason: sc.reason, row: run.row + 1, act: run.act, maxHand: run.maxHand - run.scars, fights: run.stats.fights, devoured: run.stats.devoured.length, seed: run.seed, ...(sc.ending ? { ending: sc.ending } : {}), turn: run.ascension, ...(run.daily ? { daily: run.daily } : {}) });
+    // Giving the Tail back its body: you carry one of its scales into the next descent.
+    if (sc.win && sc.ending === "give") meta.tailScale = true;
     if (sc.win && sc.ending) {
       const list = (meta.endings[run.molt] ??= []);
       if (!list.includes(sc.ending)) list.push(sc.ending);
@@ -1613,6 +1639,7 @@ export class App implements RunAgent, Presenter {
     const el = h(`<section class="screen dark results"><div class="plate-screen">
       <div class="result-body" style="width:min(300px,72vw)">${coda}</div>
       <h1>${escapeHtml(title)}</h1>
+      ${sc.win && sc.ending === "give" ? `<p class="lines">You let it go, and kept one of its scales. The Tail Scale starts your next descent.</p>` : ""}
       <dl class="statlist">
         <dt>Reached</dt><dd>${sc.reason === "ring" || run.screen.kind === "over" && run.row < 0 && run.act >= 3 ? "The Tail" : `${escapeHtml(ACT_NAMES[run.act] ?? "")} · ${run.row + 1}`}</dd>
         ${!sc.win && st.diedTo ? `<dt>Taken by</dt><dd>${escapeHtml(FOES[st.diedTo]?.name ?? "")}</dd>` : ""}

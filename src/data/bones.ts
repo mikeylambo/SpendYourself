@@ -66,10 +66,12 @@ const list: BoneDef[] = [
   { id: "bone.sunstone", name: "Sunstone", rarity: "R", text: "Your opening hand starts coiled 1." },
   { id: "bone.spiral_shell", name: "Spiral Shell", rarity: "R", text: "Your first card each turn resolves twice." },
   { id: "bone.midnight", name: "Midnight", rarity: "R", text: "Enemies skip their first move each fight." },
+  { id: "bone.husk_box", name: "Husk Box", rarity: "U", text: "Once per act, a husk you leave behind is boxed and offered again at your next devour." },
   // Boss
   { id: "bone.queen_carapace", name: "Queen's Carapace", rarity: "B", text: "Block 3 every turn. Draw 1 less each turn." },
   { id: "bone.old_skin", name: "Old Skin", rarity: "B", text: "You can never carry more than 2 scars." },
   { id: "bone.spore_heart", name: "Spore Heart", rarity: "B", text: "Poisoned enemies spread their poison when they die." },
+  { id: "bone.tail_scale", name: "Tail Scale", rarity: "B", text: "+1 coil cap. Carried out of a Give ending into your next descent." },
   { id: "bone.drowned_pearl", name: "Drowned Pearl", rarity: "B", text: "+2 max hand. While Big, every hit lands 2 more wounds instead of 1." },
 ];
 

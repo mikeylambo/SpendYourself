@@ -6,6 +6,7 @@ import {
   drawCards,
   eatTarget,
   isBig,
+  isHeavy,
   might,
   shuffle,
   startTurnReset,
@@ -18,6 +19,7 @@ import {
 import { tuning } from "../data/tuning.ts";
 import { CARDS } from "../data/cards.ts";
 import { FOES } from "../data/foes.ts";
+import { BONES } from "../data/bones.ts";
 import type { CardCtx, CardDef } from "./cardTypes.ts";
 import type { RunState } from "./state.ts";
 import type { Act, Agent, CombatState, FoeState, FoeTier, Intent, PickRequest, Presenter } from "./types.ts";
@@ -67,7 +69,7 @@ export function createCombat(run: RunState, encounter: string[], kind: FoeTier, 
   const t = tuning.body;
   const body = createBody({
     maxHand: run.maxHand - run.scars,
-    coilCap: (run.molt === "storm" ? t.stormCoilCap : t.coilCap) + (has("bone.coiled_spine") ? 1 : 0),
+    coilCap: (run.molt === "storm" ? t.stormCoilCap : t.coilCap) + (has("bone.coiled_spine") ? 1 : 0) + (has("bone.tail_scale") ? 1 : 0) + (run.shellAct === run.act ? 1 : 0),
     bigAt: (asc(run.ascension, 13) ? 7 : asc(run.ascension, 5) ? 8 : t.bigAt) + (has("bone.beetle_wing") ? 1 : 0) - (has("bone.leviathan_rib") ? 2 : 0),
     heavyAt: (asc(run.ascension, 10) ? 11 : t.heavyAt) + (has("bone.anchor") ? 3 : 0),
     drawPerTurn: t.drawPerTurn - (has("bone.queen_carapace") ? 1 : 0),
@@ -124,7 +126,7 @@ export function createCombat(run: RunState, encounter: string[], kind: FoeTier, 
   body.draw = run.deck.map((d, i) => ({
     uid: ++s.nextUid,
     id: d.id,
-    coil: d.up ? Math.min(body.coilCap, 1 + fossil) : 0,
+    coil: Math.min(body.coilCap, Math.max(d.up ? 1 + fossil : 0, d.coiled ?? 0)),
     up: d.up,
     held: 0,
     bound: false,
@@ -142,7 +144,7 @@ export function createCombat(run: RunState, encounter: string[], kind: FoeTier, 
       f.hp = f.max = Math.max(60, Math.min(run.maxHand - run.scars, 15) * 12);
       const ids = run.deck.map((d) => d.id);
       shuffle(ids, rng);
-      s.tail = { draw: ids, discard: [], ringGiven: false };
+      s.tail = { draw: ids, discard: [], ringGiven: false, bones: [...run.bones] };
     }
   }
   s.targetUid = s.foes[0]?.uid ?? 0;
@@ -235,6 +237,18 @@ export class Combat {
       (asc(run.ascension, 19) ? 1 : 0);
     drawCards(b, opening, this.rng);
     if (this.has("bone.sunstone")) for (const c of b.hand) addCoil(b, c, 1);
+    // The parasite takes a bite of every opening hand until you rest.
+    if (run.parasite && b.hand.length > 1) {
+      const c = b.hand[Math.floor(this.rng.next() * b.hand.length)]!;
+      b.hand.splice(b.hand.indexOf(c), 1);
+      c.coil = 0;
+      b.discard.push(c);
+      await this.emit("parasite", { id: c.id });
+    }
+    if (run.lanternFights) {
+      this.setN("lantern", 1);
+      run.lanternFights--;
+    }
     if (this.has("bone.vertebra") && b.hand[0]) b.hand[0].coil = Math.max(b.hand[0].coil, Math.min(2, b.coilCap));
     if (run.molt === "storm") {
       const pool = [...b.hand];
@@ -321,6 +335,14 @@ export class Combat {
       else acts.push({ k: "buff", n: 1 });
     }
     if (f.phase === 2 && f.step % 2 === 0) acts.push({ k: "eat" });
+    // The mirror carries your bones too: each turn it turns one of them on you.
+    t.bone = undefined;
+    if (t.bones?.length) {
+      const id = t.bones[f.step % t.bones.length]!;
+      t.bone = id;
+      const r = BONES[id]?.rarity;
+      acts.push(r === "C" ? { k: "block", n: 4 } : r === "U" ? { k: "buff", n: 1 } : r === "R" ? { k: "atk", n: 2 } : { k: "eat" });
+    }
     // merge attacks into one readable intent
     const atk = acts.filter((a): a is Extract<Act, { k: "atk" }> => a.k === "atk");
     const rest = acts.filter((a) => a.k !== "atk");
@@ -363,7 +385,9 @@ export class Combat {
       if (f.skip > 0 || f.coaxed || this.diesToPoison(f)) continue;
       for (const a of f.intent) if (a.k === "atk") incoming += this.attackValue(f, a.n) * this.attackHits(f, a.x ?? 1);
     }
-    let landed = Math.max(0, incoming - this.body.block);
+    // Heavy's bulk blocks at the end of your turn, so count it before it arrives.
+    const heavy = isHeavy(this.body) ? tuning.body.heavyBlock : 0;
+    let landed = Math.max(0, incoming - this.body.block - heavy);
     if (landed > 0 && s.flags.secondSkin) landed--;
     if (landed > 0 && this.has("bone.eggshell") && !s.flags.eggshellUsed) landed--;
     const woundable = this.body.hand.filter((c) => c.id !== "card.close_the_ring").length;
@@ -417,6 +441,11 @@ export class Combat {
       if (k.u && !def.ownUpgrade) v[0]! += 1;
       if (def.type === "guard" && this.has("bone.iron_scale")) v[0]! += 1;
       if (def.id === "card.lash" && this.has("bone.ember")) v[0]! += 1;
+      // Choir Song: strikes ring louder this act, guards ring thin.
+      if (this.run.choirAct === this.run.act) {
+        if (def.type === "strike") v[0]! += 1;
+        else if (def.type === "guard") v[0] = Math.max(0, v[0]! - 1);
+      }
     }
     return v;
   }
@@ -558,6 +587,10 @@ export class Combat {
       if (b.hand.length) await this.emit("card.coil", {});
       s.lockPlays = false;
       if (this.run.molt === "tide" && b.hand.length <= 3) b.nextDraw += 1;
+      if (isHeavy(b) && tuning.body.heavyBlock) {
+        b.block += tuning.body.heavyBlock;
+        await this.emit("block.gain", { n: tuning.body.heavyBlock, heavy: true });
+      }
       await this.enemyTurn();
     } finally {
       this.busy = false;
@@ -646,8 +679,15 @@ export class Combat {
       if (wounds > 0) {
         const picked = await this.pickCards({ kind: "wound", prompt: "wound", cards: woundable, count: wounds });
         for (const id of picked) {
+          const card = b.hand.find((x) => x.uid === id);
           this.wound(id);
           await this.emit("wound.take", { uid: id });
+          const on = card && this.def(card).onWound;
+          if (on) {
+            on(this, card);
+            await this.emit("card.lostPower", { id: card.id });
+            if (this.checkWin()) return;
+          }
         }
       }
     }
