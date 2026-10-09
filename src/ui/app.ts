@@ -96,7 +96,20 @@ export class App implements RunAgent, Presenter {
     this.input.on((a) => this.onAction(a));
     addEventListener("pointerdown", () => this.audio.unlock(), { passive: true });
     addEventListener("keydown", () => this.audio.unlock());
-    addEventListener("resize", () => { if (this.view === "run" && this.run?.screen.kind === "combat") this.updateFight(); });
+    // Rotation (above all in an installed PWA) fires resize before the viewport settles: size from
+    // innerHeight, then lay out again once it has settled.
+    let settle = 0;
+    const onResize = () => {
+      document.documentElement.style.setProperty("--app-h", `${innerHeight}px`);
+      clearTimeout(settle);
+      settle = window.setTimeout(() => {
+        document.documentElement.style.setProperty("--app-h", `${innerHeight}px`);
+        this.relayout();
+      }, 160);
+    };
+    addEventListener("resize", onResize);
+    addEventListener("orientationchange", () => { onResize(); setTimeout(onResize, 450); });
+    onResize();
     document.addEventListener("visibilitychange", () => {
       this.audio.suspend(document.hidden);
       if (document.hidden && this.run) void this.save();
@@ -337,6 +350,14 @@ export class App implements RunAgent, Presenter {
     this.audio.unlock();
     this.audio.startMusic(run.act);
     void this.render();
+  }
+
+  /** Re-fit the current screen to a new viewport (rotation, split view, window resize). */
+  private relayout(): void {
+    if (this.view !== "run" || !this.run) return;
+    const kind = this.run.screen.kind;
+    if (kind === "combat") this.updateFight();
+    else if (kind === "map") void this.render();
   }
 
   async save(): Promise<void> {

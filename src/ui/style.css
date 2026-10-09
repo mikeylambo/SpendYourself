@@ -21,6 +21,8 @@
   --speed: 1;
   --safe-b: env(safe-area-inset-bottom, 0px);
   --safe-t: env(safe-area-inset-top, 0px);
+  --safe-l: env(safe-area-inset-left, 0px);
+  --safe-r: env(safe-area-inset-right, 0px);
   color-scheme: dark;
 }
 :root[data-contrast="high"] {
@@ -46,7 +48,7 @@ body {
 }
 button { font: inherit; color: inherit; }
 [hidden] { display: none !important; }
-#app { position: fixed; inset: 0; overflow: hidden; }
+#app { position: fixed; left: 0; top: 0; width: 100%; height: var(--app-h, 100dvh); overflow: hidden; }
 
 /* Paper grain over everything; cheap SVG noise, multiply. */
 #app::after {
@@ -105,7 +107,7 @@ button { font: inherit; color: inherit; }
 /* ---------- top bar ---------- */
 .bar {
   display: flex; align-items: center; gap: 14px;
-  padding: calc(8px + var(--safe-t)) 16px 8px;
+  padding: calc(8px + var(--safe-t)) calc(16px + var(--safe-r)) 8px calc(16px + var(--safe-l));
   font-family: var(--f-poster); letter-spacing: 0.08em; font-size: 0.95em;
   color: var(--bone);
   z-index: 5;
@@ -402,7 +404,10 @@ button { font: inherit; color: inherit; }
 .coach b svg { width: 18px; height: 18px; }
 
 /* ---------- how to play ---------- */
-.howto { justify-content: center; text-align: center; gap: 16px; }
+.howto { justify-content: flex-start; text-align: center; gap: 16px; }
+/* Center when it fits, scroll from the top when it doesn't (plain centering clips the top). */
+.howto > :first-child { margin-top: auto; }
+.howto > :last-child { margin-bottom: auto; }
 .howto-art { height: 120px; display: grid; place-items: center; color: var(--bone); }
 .howto-art svg { width: 100px; height: 100px; }
 .guide-num { font-family: var(--f-title); font-size: 110px; line-height: 1; }
@@ -478,4 +483,44 @@ button { font: inherit; color: inherit; }
   .plate { font-size: 0.9em; padding: 2px 6px; }
   .plate.forecast { font-size: 1.1em; }
   .pile { font-size: 0.85em; padding: 2px; }
+}
+
+/* ---------- landscape phones: short and wide ---------- */
+@media (orientation: landscape) and (max-height: 540px) {
+  .bar { padding-top: calc(4px + var(--safe-t)); padding-bottom: 4px; }
+  .bar .icon-btn { min-height: 34px; padding: 4px; }
+  .plate-screen { padding: 10px calc(16px + var(--safe-r)) calc(12px + var(--safe-b)) calc(16px + var(--safe-l)); gap: 10px; }
+  .plate-screen h1 { font-size: clamp(28px, 11vh, 52px); }
+  .howto-art { height: 72px; }
+  .howto-art svg { width: 64px; height: 64px; }
+  .guide-num { font-size: 64px; }
+  .howto-lines { font-size: 1em; max-width: 60ch; gap: 6px; }
+
+  .title-wrap { flex-direction: row; flex-wrap: wrap; gap: 4vw; padding: 12px calc(24px + var(--safe-r)) 12px calc(24px + var(--safe-l)); overflow-y: auto; }
+  .wordmark { font-size: clamp(40px, min(11vw, 21vh), 110px); }
+  .menu { width: min(280px, 40vw); gap: 6px; }
+  .menu .btn { min-height: 40px; padding: 0.5em 1em; }
+
+  /* Fight: foes and the might column share the top, the hand and End turn share the bottom. */
+  .board {
+    display: grid; max-width: none;
+    grid-template-columns: minmax(0, 1fr) clamp(132px, 20vw, 200px);
+    grid-template-rows: minmax(0, 1fr) auto;
+    grid-template-areas: "foes core" "hand core";
+    padding: 0 var(--safe-r) 0 var(--safe-l);
+  }
+  .foes { grid-area: foes; padding-top: 2px; }
+  .foe { gap: 2px; padding: 2px; }
+  .intent { min-height: 26px; font-size: 1.05em; }
+  .intent svg { width: 22px; height: 22px; }
+  .core { grid-area: core; display: flex; flex-direction: column; justify-content: flex-start; gap: 6px; padding: 4px 8px 76px; min-height: 0; overflow: hidden; }
+  .core .left, .core .right { flex-wrap: wrap; justify-content: center; gap: 6px; }
+  .core .left:empty { display: none; }
+  .might b { font-size: clamp(36px, 13vh, 60px); }
+  .handzone { grid-area: hand; height: calc(clamp(140px, 46vh, 230px) + var(--safe-b)); }
+  .actions { position: absolute; right: var(--safe-r); bottom: 0; width: clamp(132px, 20vw, 200px); padding: 0 8px calc(10px + var(--safe-b)); }
+  .actions .btn { min-width: 0; width: 100%; padding: 0.7em 0.6em; }
+  .preview { left: 8px; transform: none; bottom: calc(100% - 30px); }
+  .preview .card { --w: min(150px, 34vh); }
+  .banner { top: 0; transform: translate(-50%, -100%); }
 }
