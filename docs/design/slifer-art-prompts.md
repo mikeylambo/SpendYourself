@@ -247,7 +247,7 @@ Act tints for enemies: **Topsoil** warm umber `#6b5236` · **Roots** moss grey `
 | `storm.calm_before.png` | a completely still landscape under a violet sky, a coil in the foreground |
 | `storm.final_strike.png` | a serpent striking with every scale discharging violet light |
 | `storm.spent_bolt.png` | a row of small violet sparks, each brighter than the last, ending in a bolt |
-| `storm.eye_of_the_storm.png` | a thin serpent alone in a storm's clear centre, violet lightning lancing outward in every direction |
+| `storm.eye_of_the_storm.png` | (Last Light) a thin serpent alone in a storm's clear centre, violet lightning lancing outward in every direction |
 
 ## 6. Enemies and bosses
 

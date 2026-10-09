@@ -99,7 +99,7 @@ Every illustration is procedural until generated art lands. Drop files named by 
    Fang, Scale, Constrict and Hiss Strike have their own upgrades, and several strikes scale
    harder with coil. New cards: wound triggers (Bitter Scale, Molting Pain), lost-body cards
    (Reclaim, Phantom Limb) and spending cards for Venom (Empty Belly, Last Gasp) and Storm
-   (Spent Bolt, Eye of the Storm). Act 3 enemies each have a signature (daze, lure, pin, heal,
+   (Spent Bolt, Last Light). Act 3 enemies each have a signature (daze, lure, pin, heal,
    swallow, sting). The Tail turns your bones on you. A Give ending sends the Tail Scale into
    your next run. All 30 events and 60 bones from the content doc are in.
 

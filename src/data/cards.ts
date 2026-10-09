@@ -722,7 +722,7 @@ S("storm.spent_bolt", "Spent Bolt", "strike", "C", {
   n: (k) => [2 * k.e.s.playedThisTurn + k.c], t: ([d]) => `Deal ${d} (2 per card played this turn).`,
   run: (k, [d]) => void k.e.hit(k.t, d!),
 });
-S("storm.eye_of_the_storm", "Eye of the Storm", "strike", "U", {
+S("storm.eye_of_the_storm", "Last Light", "strike", "U", {
   f: "Deal 3 to all enemies. With 3 or fewer cards left: 9 + 2c instead",
   n: (k) => [k.e.body.hand.length <= 3 ? 9 + 2 * k.c : 3], t: ([d]) => `Deal ${d} to all enemies. Stronger at 3 cards or fewer.`,
   run: (k, [d]) => k.e.hitAll(d!),
