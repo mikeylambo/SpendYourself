@@ -17,7 +17,7 @@ Everything needed to generate the full illustration set with ChatGPT image gener
 
 **Sizes:** card art 1024 × 1024 (code crops it into the frame's window; keep the subject inside the middle 80%). Enemies 1024 × 1024 on a transparent background. Key arts 1536 × 1024 (landscape), and 1024 × 1536 where noted for phone.
 
-**Count:** 165 cards + 1 finale card, 37 enemies and bosses, 10 key arts, 4 molt/UI textures = **217 images**.
+**Count:** 173 cards + 1 finale card, 37 enemies and bosses, 10 key arts, 4 molt/UI textures = **225 images**.
 
 ## 2. Master style block (paste once per chat)
 
@@ -72,6 +72,7 @@ Act tints for enemies: **Topsoil** warm umber `#6b5236` · **Roots** moss grey `
 | `card.world_eater.png` | a serpent coiled around a small globe of earth, mouth open |
 | `card.last_scale.png` | one single scale falling, glowing faintly, everything else dark |
 | `card.circle_strike.png` | a serpent striking in a full circle, a ring of motion around it |
+| `card.reclaim.png` | a serpent striking up out of a heap of its own fallen scales |
 
 ### Shared: guards
 | File | Subject |
@@ -92,6 +93,8 @@ Act tints for enemies: **Topsoil** warm umber `#6b5236` · **Roots** moss grey `
 | `card.stone_coil.png` | a serpent coiled on a boulder, both turning to stone |
 | `card.molted_skin.png` | a whole empty serpent skin lying in a perfect ring |
 | `card.patient_ring.png` | a ring made of serpent scales resting on bone paper (ink and bone, not gold) |
+| `card.bitter_scale.png` | a single cracked scale torn loose, sharp splinters flying back outward |
+| `card.phantom_limb.png` | the faint stippled outline of missing coils, still guarding where the body used to be |
 
 ### Shared: body
 | File | Subject |
@@ -115,6 +118,7 @@ Act tints for enemies: **Topsoil** warm umber `#6b5236` · **Roots** moss grey `
 | `card.endless_ring.png` | an ouroboros ring, tail in mouth, seen from above |
 | `card.second_skin.png` | a serpent wearing a ghostly second skin over its own |
 | `card.true_size.png` | a small serpent casting an enormous shadow |
+| `card.molting_pain.png` | a serpent arching as a strip of old skin tears away, raw new scales beneath |
 
 ### Shared: rites
 | File | Subject |
@@ -172,6 +176,8 @@ Act tints for enemies: **Topsoil** warm umber `#6b5236` · **Roots** moss grey `
 | `venom.eater_of_all.png` | a serpent mouth opening over a field of green-poisoned silhouettes |
 | `venom.slow_god.png` | a vast, sleepy serpent shape in green fog |
 | `venom.final_meal.png` | a serpent with every card-scale glowing green, mouth open |
+| `venom.empty_belly.png` | a gaunt serpent with a hollow, sunken belly, one green bead at its fang |
+| `venom.last_gasp.png` | a serpent's final exhale rolling out as a wide, low green cloud |
 
 ### Tide
 | File | Subject |
@@ -240,6 +246,8 @@ Act tints for enemies: **Topsoil** warm umber `#6b5236` · **Roots** moss grey `
 | `storm.storm_crown.png` | a ring of lightning around a serpent's head like a crown |
 | `storm.calm_before.png` | a completely still landscape under a violet sky, a coil in the foreground |
 | `storm.final_strike.png` | a serpent striking with every scale discharging violet light |
+| `storm.spent_bolt.png` | a row of small violet sparks, each brighter than the last, ending in a bolt |
+| `storm.eye_of_the_storm.png` | a thin serpent alone in a storm's clear centre, violet lightning lancing outward in every direction |
 
 ## 6. Enemies and bosses
 
