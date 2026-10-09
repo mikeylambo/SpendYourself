@@ -935,6 +935,7 @@ export class Combat {
   }
 
   hitAll(n: number, asCard = true): void {
+    if (asCard) void this.emit("enemy.sweep", { n });
     for (const f of this.alive()) {
       if (asCard) this.hit(f, n);
       else this.damageFoe(f, n, false);

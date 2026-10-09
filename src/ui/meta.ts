@@ -104,6 +104,8 @@ export interface Settings {
   woundConfirm: "auto" | "on" | "off";
   intentDetail: boolean;
   grain: boolean;
+  halftone: boolean;
+  haptics: boolean;
   tips: boolean;
 }
 
@@ -118,6 +120,8 @@ export const defaultSettings: Settings = {
   woundConfirm: "auto",
   intentDetail: false,
   grain: true,
+  halftone: false,
+  haptics: true,
   tips: true,
 };
 

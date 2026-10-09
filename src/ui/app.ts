@@ -82,6 +82,8 @@ export class App implements RunAgent, Presenter {
   private peek: number | null = null;
   /** The guided first fight: which step the player is on. */
   private guided: string | null = null;
+  /** This run completed every molt's both endings: show the closing plate. */
+  private finalPlate = false;
   private slid = false;
   private removal = new Map<number, string>();
   private deaths = new Map<number, number>();
@@ -137,6 +139,7 @@ export class App implements RunAgent, Presenter {
     r.dataset.contrast = s.highContrast ? "high" : "normal";
     r.dataset.motion = s.reducedMotion ? "reduced" : "full";
     r.dataset.grain = s.grain ? "on" : "off";
+    r.dataset.halftone = s.halftone ? "on" : "off";
     r.style.setProperty("--text-scale", String(s.textScale));
     r.style.setProperty("--speed", String(s.fightSpeed));
     this.audio.setVolumes({ master: s.master, music: s.music, sfx: s.sfx });
@@ -538,14 +541,16 @@ export class App implements RunAgent, Presenter {
         const visited = n.row < run.row || here;
         const r = n.kind === "boss" ? 30 : nodeR;
         nodes += `<g class="mapnode${isAvail ? " avail" : ""}${visited ? " visited" : ""}${!isAvail && !visited ? " dim" : ""}" ${isAvail ? `data-nav tabindex="0" role="button" aria-label="${n.kind}"` : ""} data-row="${n.row}" data-col="${n.col}" transform="translate(${x},${y})">
+          <circle class="hit" r="${Math.max(r + 6, 24)}" fill="transparent" stroke="none"/>
           <circle class="disc" r="${r}"/>
           <g transform="translate(${-r * 0.58},${-r * 0.58}) scale(${(r * 1.16) / 24})" fill="none" stroke="${visited ? "#1d1b1a" : "#ece3cf"}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${icon(NODE_ICON[n.kind]!).replace(/^<svg[^>]*>|<\/svg>$/g, "")}</g>
           ${here ? `<circle r="${r + 7}" fill="none" stroke="var(--accent)" stroke-width="3" stroke-dasharray="${(r + 7) * 5.6} 14"/>` : ""}
         </g>`;
       }
     }
-    // strata
+    // strata: each row a little deeper and darker, like a cut through the ground
     let strata = "";
+    for (let r = 0; r < rows.length; r++) strata += `<rect x="0" y="${20 + r * rowH}" width="${W}" height="${rowH}" fill="#000" opacity="${(r / rows.length) * 0.28}"/>`;
     for (let i = 0; i < 5; i++) strata += `<path d="M0,${80 + i * (H / 5)} Q${W / 2},${60 + i * (H / 5) + (i % 2 ? 26 : -18)} ${W},${90 + i * (H / 5)}" stroke="#ece3cf" stroke-width="1" fill="none" opacity=".1"/>`;
     const el = h(`<section class="screen dark">
       ${this.barHTML()}
@@ -645,7 +650,7 @@ export class App implements RunAgent, Presenter {
     if (fc.incoming > 0) this.tip("forecast");
     el.querySelector(".core .left")!.innerHTML =
       (fc.incoming > 0 ? `<span class="plate forecast${fc.lethal ? " lethal" : ""}${fc.landed === 0 ? " safe" : ""}" title="Wounds that land when you end your turn">${icon("claw")}${fc.landed === 0 ? "0" : `−${fc.landed}`}${this.pv && this.pv.landed < fc.landed ? `<span class="pv-arrow">→</span>${this.pv.landed === 0 ? "0" : `−${this.pv.landed}`}` : ""}${fc.lethal && !(this.pv && !this.pv.lethal) ? `<em>lethal</em>` : ""}</span>` : "") +
-      (b.block ? `<span class="plate">${icon("shield")}${b.block >= 99 ? "∞" : b.block}</span>` : "") +
+      (b.block ? `<span class="plate blockplate">${icon("shield")}${b.block >= 99 ? "∞" : b.block}</span>` : "") +
       (big && c.bigActive() ? `<span class="plate big" title="Big: every hit lands ${c.bigExtra()} more wound${c.bigExtra() > 1 ? "s" : ""}">${icon("scale")}+${c.bigExtra()}</span>` : "") +
       (s.selfPoison ? `<span class="plate pz">${icon("drop")}${s.selfPoison}</span>` : "");
     el.querySelector(".core .right")!.innerHTML = `<button class="pile" data-pile="draw" title="Draw pile">${icon("draw")}${b.draw.length}</button><button class="pile" data-pile="discard" title="Discard pile">${icon("discard")}${b.discard.length}</button><span class="pile hand-count" title="Hand ${b.hand.length} of ${b.maxHand}. Big at ${b.bigAt} cards; Heavy at max hand ${b.heavyAt}.">${icon("scale")}${b.hand.length}/${b.maxHand}${this.meterHTML(b.hand.length, b.maxHand, b.bigAt)}</span>`;
@@ -936,10 +941,10 @@ export class App implements RunAgent, Presenter {
       pv.style.left = `${Math.min(W - half, Math.max(half, W / 2 - span / 2 + span * t))}px`;
     }
     // Uro's body behind the scales
-    this.drawBody(zone.querySelector("svg.body")!, pts, c, W, H, cw);
+    this.drawBody(zone.querySelector("svg.body")!, pts, c, W, H, cw, hand.map((x) => x.coil));
   }
 
-  private drawBody(svg: SVGSVGElement, pts: Array<[number, number]>, c: Combat, W: number, H: number, cw: number): void {
+  private drawBody(svg: SVGSVGElement, pts: Array<[number, number]>, c: Combat, W: number, H: number, cw: number, coils: number[] = []): void {
     const acc = ACCENT[this.run!.molt]!;
     const big = isBig(c.body);
     const thin = pts.length <= 3;
@@ -965,6 +970,7 @@ export class App implements RunAgent, Presenter {
       <path d="${d}" fill="none" stroke="${acc}" stroke-width="${w - 2}" stroke-linecap="round" stroke-linejoin="round" opacity=".9"/>
       <path d="${d}" fill="none" stroke="#1d1b1a" stroke-width="${w - 4}" stroke-linecap="butt" stroke-dasharray="2 7" opacity=".55"/>
       ${fray}
+      ${pts.map(([x, y], i) => (coils[i] ? Array.from({ length: Math.min(3, coils[i]!) }, (_, k) => `<ellipse cx="${x}" cy="${y + 4}" rx="${w * 0.5 + 3 + k * 4}" ry="${w * 0.32 + 2 + k * 2.5}" fill="none" stroke="#d9a432" stroke-width="2" opacity="${0.9 - k * 0.2}"/>`).join("") : "")).join("")}
       <g transform="translate(${head[0]},${head[1]})">
         <ellipse rx="${w * 0.95}" ry="${w * 0.72}" fill="#1d1b1a"/>
         <ellipse rx="${w * 0.95 - 3}" ry="${w * 0.72 - 3}" fill="none" stroke="${acc}" stroke-width="1.5"/>
@@ -1257,6 +1263,11 @@ export class App implements RunAgent, Presenter {
 
   emit(ev: GameEvent): void | Promise<void> {
     const t = ev.type;
+    if (this.s.haptics && "vibrate" in navigator) {
+      const buzz: Record<string, number | number[]> = { "wound.take": 35, "husk.devour": [20, 40, 70], "run.death": 220, "scar.gain": [50, 30, 50], "enemy.attack": 12 };
+      const pattern = buzz[t];
+      if (pattern) try { navigator.vibrate(pattern); } catch { /* not allowed */ }
+    }
     this.audio.play(t, { ...ev, grow: this.run ? this.run.maxHand - 7 : 0 });
     const el = this.fightEl;
     const foeEl = (uid: unknown) => el?.querySelector<HTMLElement>(`.foe[data-uid="${uid}"]`);
@@ -1285,6 +1296,9 @@ export class App implements RunAgent, Presenter {
         setTimeout(() => this.updateFight(), this.ms(720));
         return;
       case "foe.act": {
+        const actor = this.combat?.s.foes.find((x) => x.uid === ev.uid);
+        const k = actor?.intent.find((a) => a.k !== "rest")?.k;
+        if (k) this.audio.play(`foe.intent.${k}`);
         const f = foeEl(ev.uid);
         f?.classList.add("acting");
         return wait(this.ms(300)).then(() => { f?.classList.remove("acting"); });
@@ -1323,6 +1337,8 @@ export class App implements RunAgent, Presenter {
         return wait(this.ms(240));
       }
       case "block.absorb": {
+        const plate = el?.querySelector<HTMLElement>(".blockplate");
+        if (plate) { plate.classList.remove("cracking"); void plate.offsetWidth; plate.classList.add("cracking"); }
         const core = el?.querySelector<HTMLElement>(".core .left");
         if (core) this.floatAt(core, `${icon("shield")}${ev.n}`, "block");
         return;
@@ -1360,7 +1376,29 @@ export class App implements RunAgent, Presenter {
       case "card.coil.max":
       case "card.draw":
       case "block.gain":
-      case "enemy.poisoned":
+      case "enemy.poisoned": {
+        const f = foeEl(ev.uid);
+        if (f) { f.classList.remove("stipple"); void f.offsetWidth; f.classList.add("stipple"); }
+        this.updateFight();
+        return;
+      }
+      case "enemy.sweep": {
+        const foes = el?.querySelector<HTMLElement>(".foes");
+        if (foes && !this.s.reducedMotion) {
+          const w = foes.clientWidth;
+          const hh = foes.clientHeight;
+          const stroke = h(`<svg class="sweep" viewBox="0 0 ${w} ${hh}" preserveAspectRatio="none" aria-hidden="true"><path d="M-20,${hh * 0.62} C${w * 0.3},${hh * 0.4} ${w * 0.6},${hh * 0.78} ${w + 20},${hh * 0.5}" pathLength="1"/></svg>`);
+          foes.appendChild(stroke);
+          setTimeout(() => stroke.remove(), this.ms(600));
+        }
+        return;
+      }
+      case "foe.phase": {
+        const f = foeEl(ev.uid);
+        if (f) { f.classList.remove("phase-burst"); void f.offsetWidth; f.classList.add("phase-burst"); }
+        this.updateFight();
+        return wait(this.ms(500));
+      }
       case "enemy.weaken":
         this.updateFight();
         return;
@@ -1557,8 +1595,15 @@ export class App implements RunAgent, Presenter {
     );
     el.querySelectorAll<HTMLElement>(".husk .card").forEach((n) =>
       n.addEventListener("click", async () => {
-        if (sc.devours <= 0) return;
+        if (sc.devours <= 0 || n.classList.contains("swallowed")) return;
         this.persist.teach("devour");
+        // The husk slides into the mouth before the body grows.
+        let mouth = el.querySelector<HTMLElement>(".devour-mouth");
+        if (!mouth) { mouth = h(`<div class="devour-mouth" aria-hidden="true">${icon("maw", "", "currentColor", 1.4)}</div>`); el.appendChild(mouth); }
+        mouth.classList.add("open");
+        n.classList.add("swallowed");
+        this.audio.play("devour");
+        await wait(this.ms(520));
         ctl.devour(Number(n.dataset.i));
         if (sc.devours <= 0 || !sc.husks.length) ctl.leave();
         await this.after();
@@ -1688,6 +1733,7 @@ export class App implements RunAgent, Presenter {
     const sc = run.screen;
     if (sc.kind !== "over") return;
     const meta = this.persist.meta;
+    const wasWhole = MOLTS.every((m) => (meta.endings[m] ?? []).length >= 2);
     meta.runs++;
     if (sc.win) meta.wins++;
     meta.bestRow = Math.max(meta.bestRow, run.row + 1 + (run.act - 1) * 16);
@@ -1700,6 +1746,7 @@ export class App implements RunAgent, Presenter {
       meta.maxTurn = Math.min(20, Math.max(meta.maxTurn, run.ascension + 1));
     }
     this.unlock(run);
+    this.finalPlate = !wasWhole && MOLTS.every((m) => (meta.endings[m] ?? []).length >= 2);
     if (run.daily) {
       const prev = meta.daily[run.daily];
       const row = run.row + 1 + (run.act - 1) * 16;
@@ -1758,10 +1805,13 @@ export class App implements RunAgent, Presenter {
     const st = run.stats;
     const eff = Math.max(0, run.maxHand - run.scars);
     const title = sc.win ? (sc.ending === "give" ? "Released" : "The ring closes") : DEATH[sc.reason] ?? "Spent";
-    const coda = sc.win ? (sc.ending === "give" ? bloomCoda() : uroRing(300, "#d9a432", 40, 40)) : uroRing(300, ACCENT[run.molt], Math.max(24, eff), eff);
+    // Devour: the serpent closes around the whole world and turns.
+    const world = `<svg class="world" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="30" fill="#1d1b1a" stroke="#ece3cf" stroke-width="1.2"/>${[0, 1, 2, 3].map((i) => `<path d="M${22 + i * 2},${40 + i * 7} Q50,${34 + i * 9} ${78 - i * 2},${40 + i * 7}" stroke="#ece3cf" stroke-width=".7" fill="none" opacity="${0.7 - i * 0.12}"/>`).join("")}<path d="M50,20 v10 M46,24 l4,-4 l4,4" stroke="#8fa63a" stroke-width="1.2" fill="none"/></svg>`;
+    const coda = sc.win ? (sc.ending === "give" ? bloomCoda() : `<div class="coda-devour">${uroRing(300, "#d9a432", 40, 40)}${world}</div>`) : uroRing(300, ACCENT[run.molt], Math.max(24, eff), eff);
     const el = h(`<section class="screen dark results"><div class="plate-screen">
       <div class="result-body" style="width:min(300px,72vw)">${coda}</div>
       <h1>${escapeHtml(title)}</h1>
+      ${this.finalPlate ? `<div class="final-plate"><h2>The ring is whole</h2><p class="lines">Every molt, both endings. You have eaten the world and given it back.</p><div class="final-marks">${MOLTS.map((m) => `<span style="color:${ACCENT[m]}">${uroRing(64, ACCENT[m]!, 18, 18)}</span>`).join("")}</div></div>` : ""}
       ${sc.win && sc.ending === "give" ? `<p class="lines">You let it go, and kept one of its scales. The Tail Scale starts your next descent.</p>` : ""}
       <dl class="statlist">
         <dt>Reached</dt><dd>${sc.reason === "ring" || run.screen.kind === "over" && run.row < 0 && run.act >= 3 ? "The Tail" : `${escapeHtml(ACT_NAMES[run.act] ?? "")} · ${run.row + 1}`}</dd>
@@ -1835,9 +1885,12 @@ export class App implements RunAgent, Presenter {
     const s = this.s;
     const pct = (v: number) => `${Math.round(v * 100)}%`;
     const row = (id: string, label: string, value: string) => `<button class="btn setting" data-nav data-s="${id}"><b>${label}</b><span>${value}</span></button>`;
+    const slider = (id: string, label: string, v: number) => `<label class="btn setting slider"><b>${label}</b><input type="range" min="0" max="100" step="5" value="${Math.round(v * 100)}" data-range="${id}" aria-label="${label}" data-nav><span>${pct(v)}</span></label>`;
     return [
-      row("master", "Volume", pct(s.master)),
-      row("music", "Music", pct(s.music)),
+      slider("master", "Volume", s.master),
+      slider("music", "Music", s.music),
+      slider("sfx", "Effects", s.sfx),
+      row("haptics", "Vibration", s.haptics ? "On" : "Off"),
       row("fightSpeed", "Fight speed", `${s.fightSpeed}×`),
       row("woundConfirm", "Confirm wounds", s.woundConfirm === "auto" ? "Touch only" : s.woundConfirm === "on" ? "On" : "Off"),
       row("intentDetail", "Show next moves", s.intentDetail ? "On" : "Off"),
@@ -1845,6 +1898,7 @@ export class App implements RunAgent, Presenter {
       row("reducedMotion", "Reduced motion", s.reducedMotion ? "On" : "Off"),
       row("highContrast", "High-contrast ink", s.highContrast ? "On" : "Off"),
       row("grain", "Paper grain", s.grain ? "On" : "Off"),
+      row("halftone", "Print texture", s.halftone ? "On" : "Off"),
       row("tips", "Tips", s.tips ? "On" : "Off"),
       row("resetTips", "Show tips again", ""),
       row("glossary", "Glossary", ""),
@@ -1852,12 +1906,25 @@ export class App implements RunAgent, Presenter {
     ].join("");
   }
 
+  /** Volume sliders: live while dragging, saved on release. */
+  private wireRanges(el: HTMLElement): void {
+    el.querySelectorAll<HTMLInputElement>("[data-range]").forEach((r) => {
+      const key = r.dataset.range as "master" | "music" | "sfx";
+      r.addEventListener("input", () => {
+        this.s[key] = Number(r.value) / 100;
+        this.applySettings();
+        const out = r.parentElement?.querySelector("span");
+        if (out) out.textContent = `${r.value}%`;
+      });
+      r.addEventListener("change", () => { void this.persist.saveSettings(); this.audio.play("ui.confirm"); });
+    });
+  }
+
   private async changeSetting(id: string): Promise<void> {
     const s = this.s;
     const cycle = <T>(list: T[], cur: T): T => list[(list.indexOf(cur) + 1) % list.length]!;
     switch (id) {
-      case "master": s.master = cycle([0, 0.2, 0.4, 0.6, 0.8, 1], s.master); break;
-      case "music": s.music = cycle([0, 0.25, 0.5, 0.75, 1], s.music); break;
+      case "haptics": s.haptics = !s.haptics; if (s.haptics) try { navigator.vibrate?.(30); } catch { /* no vibration */ } break;
       case "fightSpeed": s.fightSpeed = cycle([1, 1.5, 2], s.fightSpeed); break;
       case "woundConfirm": s.woundConfirm = cycle<Settings["woundConfirm"]>(["auto", "on", "off"], s.woundConfirm); break;
       case "intentDetail": s.intentDetail = !s.intentDetail; break;
@@ -1865,6 +1932,7 @@ export class App implements RunAgent, Presenter {
       case "reducedMotion": s.reducedMotion = !s.reducedMotion; break;
       case "highContrast": s.highContrast = !s.highContrast; break;
       case "grain": s.grain = !s.grain; break;
+      case "halftone": s.halftone = !s.halftone; break;
       case "tips": s.tips = !s.tips; break;
       case "resetTips":
         this.persist.meta.taught = this.persist.meta.taught.filter((t) => !t.startsWith("tip."));
@@ -1892,6 +1960,7 @@ export class App implements RunAgent, Presenter {
     const draw = (focusId?: string) => {
       const el = h(`<section class="screen dark"><div class="plate-screen"><h1>Settings</h1><div class="settings">${this.settingsRows()}</div><button class="btn ghost" data-nav data-back>${icon("back")}</button></div></section>`);
       el.querySelectorAll<HTMLElement>("[data-s]").forEach((b) => b.addEventListener("click", async () => { await this.changeSetting(b.dataset.s!); draw(b.dataset.s); }));
+      this.wireRanges(el);
       el.querySelector("[data-back]")!.addEventListener("click", () => back());
       this.setScreen(el);
       if (focusId) requestAnimationFrame(() => el.querySelector<HTMLElement>(`[data-s="${focusId}"]`)?.focus());
@@ -1903,6 +1972,7 @@ export class App implements RunAgent, Presenter {
     const draw = (focusId?: string) => {
       const el = h(`<div class="overlay"><h2>Settings</h2><div class="settings">${this.settingsRows()}</div><button class="btn ghost" data-nav data-back>${icon("back")}</button></div>`);
       el.querySelectorAll<HTMLElement>("[data-s]").forEach((b) => b.addEventListener("click", async () => { await this.changeSetting(b.dataset.s!); draw(b.dataset.s); }));
+      this.wireRanges(el);
       el.querySelector("[data-back]")!.addEventListener("click", () => this.closeOverlay());
       this.openOverlay(el, () => this.closeOverlay());
       if (focusId) requestAnimationFrame(() => el.querySelector<HTMLElement>(`[data-s="${focusId}"]`)?.focus());
