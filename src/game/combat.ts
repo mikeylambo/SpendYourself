@@ -349,6 +349,21 @@ export class Combat {
     void this.emit("ring.offer", {});
   }
 
+  /** Wounds that will land when you end this turn, after your current block. */
+  forecast(): { incoming: number; landed: number; lethal: boolean } {
+    const s = this.s;
+    let incoming = this.n("pending") + (s.selfPoison > 0 ? 1 : 0);
+    for (const f of this.alive()) {
+      if (f.skip > 0 || f.coaxed) continue;
+      for (const a of f.intent) if (a.k === "atk") incoming += this.attackValue(f, a.n) * this.attackHits(f, a.x ?? 1);
+    }
+    let landed = Math.max(0, incoming - this.body.block);
+    if (landed > 0 && s.flags.secondSkin) landed--;
+    if (landed > 0 && this.has("bone.eggshell") && !s.flags.eggshellUsed) landed--;
+    const woundable = this.body.hand.filter((c) => c.id !== "card.close_the_ring").length;
+    return { incoming, landed, lethal: landed > 0 && landed >= woundable && !s.flags.spared };
+  }
+
   bigActive(): boolean {
     return isBig(this.body) && !this.s.flags.swell && this.s.flags.bigImmuneTurns <= 0;
   }

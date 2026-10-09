@@ -51,6 +51,7 @@ export const HOW_TO_PLAY: GuidePage[] = [
     art: big("claw", "var(--vermilion)"),
     lines: [
       "Each wound makes you discard a card. You choose which.",
+      "The red claw beside your might counts the wounds that will land when you end your turn.",
       "Block from guard cards stops wounds before they land.",
       "If wounds would take your last card, the run ends.",
     ],
@@ -86,6 +87,7 @@ export const HOW_TO_PLAY: GuidePage[] = [
 
 /** One-time tips, keyed by the moment they explain. */
 export const TIPS: Record<string, string> = {
+  forecast: "The red claw by your might shows the wounds that will land when you end your turn, after your block.",
   hand: "Your hand is your body. Each card is a scale; run out and you die.",
   play: "Tap a card to pick it up, then tap it again to play it.",
   might: "Might is the cards you hold. Spending a card makes your next hits smaller.",

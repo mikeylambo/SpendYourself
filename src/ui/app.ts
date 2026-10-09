@@ -534,7 +534,10 @@ export class App implements RunAgent, Presenter {
       void (mightEl as HTMLElement).offsetWidth;
       mightEl.classList.add("pulse");
     }
+    const fc = c.forecast();
+    if (fc.incoming > 0) this.tip("forecast");
     el.querySelector(".core .left")!.innerHTML =
+      (fc.incoming > 0 ? `<span class="plate forecast${fc.lethal ? " lethal" : ""}${fc.landed === 0 ? " safe" : ""}" title="Wounds that land when you end your turn">${icon("claw")}${fc.landed === 0 ? "0" : `−${fc.landed}`}${fc.lethal ? `<em>lethal</em>` : ""}</span>` : "") +
       (b.block ? `<span class="plate">${icon("shield")}${b.block >= 99 ? "∞" : b.block}</span>` : "") +
       (big && c.bigActive() ? `<span class="plate big" title="Big: every hit lands one more wound">${icon("scale")}+1</span>` : "") +
       (s.selfPoison ? `<span class="plate pz">${icon("drop")}${s.selfPoison}</span>` : "");
