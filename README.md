@@ -103,6 +103,28 @@ Every illustration is procedural until generated art lands. Drop files named by 
    swallow, sting). The Tail turns your bones on you. A Give ending sends the Tail Scale into
    your next run. All 30 events and 60 bones from the content doc are in.
 
+## Playtest and release tools
+
+- **Settings → Report a problem** copies the version, device, run seed and the last 20 uncaught
+  errors. **Copy / Load save code** moves a whole save between devices (the foundation for cloud
+  save). **What's new** reads `CHANGELOG.md`; the version shows on the title.
+- **Library → History**: replay any run's seed (↻) and see where your runs end, by enemy and stratum.
+  The molt picker takes a typed seed.
+- **Daily leaderboard**: set `VITE_LEADERBOARD_URL` at build time and Daily results (not assisted
+  runs) are POSTed there as `{date, molt, win, row, seed}`. Unset, nothing leaves the device.
+- **Undo assist** (Settings): undo the last card this turn; the run is marked assisted.
+- **CI** gates on the balance sim (`npm run sim -- --runs 200 --ci`), bands in `tools/sim.ts`.
+- Performance: a full fight redraw at 4× CPU throttle with 4 enemies and 14 cards takes ~11 ms
+  (only changed cards are rebuilt).
+- Art and sound slots: `art/` (see its README) and `audio/` (recorded takes by cue id).
+
+## Before launch
+
+- Trademark search on "Spend Yourself" and the Uro name; keep the serpent art clear of the
+  Slifer card it riffs on (the spec's pre-launch list). Not done here.
+- Test on real phones and a physical gamepad (headless Chromium covered phone, landscape and
+  desktop sizes, keyboard and a simulated pad).
+
 ## Known gaps / next
 
 - Balance (80 full runs per molt, balanced bot, after the snowball fix): Venom 11%, Storm 6–13%,

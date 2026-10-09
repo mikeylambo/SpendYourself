@@ -32,7 +32,14 @@ export class SemanticInput {
   private shell = new InputManager();
   private source = new BrowserInputSource(PAD);
   private handlers: Array<(a: Action) => void> = [];
-  family: "keyboard" | "gamepad" | "touch" = "keyboard";
+  private fam: "keyboard" | "gamepad" | "touch" = "keyboard";
+  get family(): "keyboard" | "gamepad" | "touch" { return this.fam; }
+  /** The page shows button glyphs for whichever device you last used. */
+  set family(f: "keyboard" | "gamepad" | "touch") {
+    if (f === this.fam) return;
+    this.fam = f;
+    document.documentElement.dataset.input = f;
+  }
 
   constructor() {
     this.shell.setBindings(PAD);

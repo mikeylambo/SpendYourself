@@ -87,6 +87,8 @@ export interface RunState {
   shellAct?: number;
   lanternFights?: number;
   parasite?: boolean;
+  /** Undo assist was used: kept off any leaderboard. */
+  assisted?: boolean;
   screen: Screen;
   startedAt: number;
   /** Daily Descent date (YYYY-MM-DD) when this is the daily run. */

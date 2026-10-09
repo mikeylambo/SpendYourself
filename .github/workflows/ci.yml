@@ -14,8 +14,9 @@ jobs:
       - run: npm run check
       - run: npm test
       - run: npm run build
-      # Balance report (slifer-tuning.md §9). Reported, not gating, until the act 1 bands are tuned; add --ci to gate.
-      - run: npm run sim -- --runs 200 --out sim-report.json
+      # Balance gate (slifer-tuning.md §9): fails the build when a bot's win rate leaves its band,
+      # a run gets stuck, or one enemy causes too many deaths. Bands live in tools/sim.ts.
+      - run: npm run sim -- --runs 200 --ci --out sim-report.json
       - uses: actions/upload-artifact@v4
         with:
           name: sim-report

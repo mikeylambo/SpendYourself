@@ -10,12 +10,13 @@ import type { Combat } from "../game/combat.ts";
 import { LAST_ACT, newRun, RunController, type RunAgent } from "../game/run.ts";
 import type { MapNode, RunState } from "../game/state.ts";
 import { previewPlay, type PlayPreview } from "../game/preview.ts";
-import type { Act, FoeState, GameEvent, MoltId, PickRequest, Presenter } from "../game/types.ts";
+import type { Act, CombatState, FoeState, GameEvent, MoltId, PickRequest, Presenter } from "../game/types.ts";
 import { bloomCoda, boneGlyph, creatureSVG, icon, ringGlyph, SVG_DEFS, uroRing } from "./art.ts";
 import { AudioEngine } from "./audio.ts";
 import { breakdownHTML, cardHTML, escapeHtml, previewCombat, staticCardHTML } from "./cardView.ts";
 import { focusFirst, navMove, SemanticInput, type Action } from "./input.ts";
-import { Persistence, type Settings } from "./meta.ts";
+import { errorLog, Persistence, submitDaily, type Meta, type Settings } from "./meta.ts";
+import CHANGELOG from "../../CHANGELOG.md?raw";
 
 const ACT_NAMES: Record<number, string> = { 1: "Topsoil", 2: "The Roots", 3: "The Deep Water" };
 const ACCENT: Record<string, string> = { venom: "#8fa63a", tide: "#2f7d86", storm: "#7a5cc4" };
@@ -42,6 +43,27 @@ const MOLT_INFO: Record<MoltId, { name: string; play: string; passive: string; u
 const freshSeed = () => Math.random().toString(36).slice(2, 10).toUpperCase();
 const dailyDate = () => new Date().toISOString().slice(0, 10);
 const hashDay = (d: string) => [...d].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7);
+/** Write markup only when it changed; returns whether it did. Rebuilding unchanged nodes is most of a fight frame. */
+const lastHTML = new WeakMap<Element, string>();
+function setHTML(el: Element, html: string): boolean {
+  if (lastHTML.get(el) === html) return false;
+  lastHTML.set(el, html);
+  el.innerHTML = html;
+  return true;
+}
+
+const CREDITS = `## Spend Yourself
+Design, direction and playtesting: Michael Parker.
+Built with Claude Code on the SLU Web Shell.
+
+## Type
+EB Garamond, Oswald and Playfair Display (SIL Open Font License), via Google Fonts.
+
+## Art and sound
+Every engraving and every sound in this build is drawn or synthesized in code. Illustrated cards and recorded sound drop in without code changes (see art/ and audio/).
+
+## Thanks
+Everyone who lost a scale to the Beetle Queen.`;
 const DEATH: Record<string, string> = { torn: "Torn apart", spent: "Spent", worn: "Worn to nothing" };
 const NODE_ICON: Record<string, string> = { fight: "claw", elite: "elite", rest: "rest_node", event: "event", shop: "shop", treasure: "treasure", boss: "boss" };
 
@@ -80,8 +102,12 @@ export class App implements RunAgent, Presenter {
   private endArmed = 0;
   /** Card under the finger while sliding across the hand. */
   private peek: number | null = null;
+  /** Last markup written to each hand card, so unchanged cards aren't rebuilt. */
+  private cardHtml = new WeakMap<HTMLElement, string>();
   /** The guided first fight: which step the player is on. */
   private guided: string | null = null;
+  /** Undo assist: the fight and run just before the last card this turn. */
+  private undoSnap: { turn: number; s: CombatState; run: Partial<RunState> } | null = null;
   /** This run completed every molt's both endings: show the closing plate. */
   private finalPlate = false;
   private slid = false;
@@ -129,6 +155,8 @@ export class App implements RunAgent, Presenter {
     document.addEventListener("visibilitychange", () => {
       this.audio.suspend(document.hidden);
       if (document.hidden && this.run) void this.save();
+      // Leaving the app mid-run pauses it, so you come back to a menu, not a turn in progress.
+      if (document.hidden && this.view === "run" && this.run && !this.overlayEl && this.run.screen.kind === "combat") this.showPause();
     });
     await this.showTitle();
   }
@@ -140,6 +168,7 @@ export class App implements RunAgent, Presenter {
     r.dataset.motion = s.reducedMotion ? "reduced" : "full";
     r.dataset.grain = s.grain ? "on" : "off";
     r.dataset.halftone = s.halftone ? "on" : "off";
+    r.dataset.hand = s.hand;
     r.style.setProperty("--text-scale", String(s.textScale));
     r.style.setProperty("--speed", String(s.fightSpeed));
     this.audio.setVolumes({ master: s.master, music: s.music, sfx: s.sfx });
@@ -216,6 +245,7 @@ export class App implements RunAgent, Presenter {
           <button class="btn ghost" data-nav data-act="settings">Settings</button>
         </div>
       </div>
+      <span class="version">v${__APP_VERSION__}</span>
     </section>`);
     const fresh = async () => { if (live) await this.persist.clearRun(); };
     el.querySelector('[data-act="continue"]')?.addEventListener("click", () => live && this.startRun(live));
@@ -273,6 +303,7 @@ export class App implements RunAgent, Presenter {
             ${ends.length ? `<small>${ends.map((e) => (e === "give" ? "Give" : "Devour")).join(" · ")}</small>` : ""}
           </button>`;
         }).join("")}</div>
+        <label class="seed-field">Seed <input type="text" maxlength="24" placeholder="random" autocapitalize="characters" spellcheck="false" data-seed></label>
         <button class="btn ghost" data-nav data-back>${icon("back")}</button>
       </div></section>`);
       el.querySelectorAll<HTMLElement>("[data-m]").forEach((b) =>
@@ -280,7 +311,8 @@ export class App implements RunAgent, Presenter {
           this.ui();
           meta.lastTurn = turn;
           void this.persist.saveMeta();
-          this.startRun(newRun({ seed: freshSeed(), molt: b.dataset.m as MoltId, onboarding: false, ascension: turn }));
+          const typed = el.querySelector<HTMLInputElement>("[data-seed]")!.value.trim().toUpperCase();
+          this.startRun(newRun({ seed: typed || freshSeed(), molt: b.dataset.m as MoltId, onboarding: false, ascension: turn }));
         }),
       );
       el.querySelectorAll<HTMLElement>("[data-t]").forEach((b) =>
@@ -329,7 +361,8 @@ export class App implements RunAgent, Presenter {
       const ends = MOLTS.map((m) => `<span style="color:${ACCENT[m]}">${MOLT_INFO[m]!.name}</span> ${(meta.endings[m] ?? []).map((e) => (e === "give" ? "Give" : "Devour")).join(" · ") || "—"}`).join("<br>");
       body = `<dl class="statlist"><dt>Runs</dt><dd>${meta.runs}</dd><dt>Wins</dt><dd>${meta.wins}</dd><dt>Deepest</dt><dd>${meta.bestRow}</dd><dt>Highest Turn</dt><dd>${meta.maxTurn}</dd></dl>
         <p class="lines" style="font-style:normal">${ends}</p>
-        <div class="history">${meta.history.map((r) => `<div class="hist-row"><span style="color:${ACCENT[r.molt] ?? "inherit"}">${escapeHtml(MOLT_INFO[r.molt as MoltId]?.name ?? r.molt)}</span><span>${r.win ? (r.ending === "give" ? "Gave" : "Devoured") : escapeHtml(DEATH[r.reason] ?? r.reason)}</span><span>${escapeHtml(ACT_NAMES[r.act] ?? "")} · ${r.row}</span><span>${icon("scale")}${r.maxHand}</span><span>${new Date(r.at).toLocaleDateString()}</span></div>`).join("") || "<p>No runs yet.</p>"}</div>`;
+        ${this.deathStatsHTML()}
+        <div class="history">${meta.history.map((r, i) => `<div class="hist-row"><button class="replay" data-nav data-replay="${i}" title="Play this seed again" aria-label="Play seed ${escapeHtml(r.seed)} again">↻</button><span style="color:${ACCENT[r.molt] ?? "inherit"}">${escapeHtml(MOLT_INFO[r.molt as MoltId]?.name ?? r.molt)}</span><span>${r.win ? (r.ending === "give" ? "Gave" : "Devoured") : escapeHtml(DEATH[r.reason] ?? r.reason)}</span><span>${escapeHtml(ACT_NAMES[r.act] ?? "")} · ${r.row}</span><span>${icon("scale")}${r.maxHand}</span><span>${new Date(r.at).toLocaleDateString()}</span></div>`).join("") || "<p>No runs yet.</p>"}</div>`;
     } else if (tab === "cards") {
       const groups: Array<[string, typeof CARD_LIST]> = [["Shared", CARD_LIST.filter((c) => !c.molt && !c.special)], ...MOLTS.map((m) => [MOLT_INFO[m]!.name, CARD_LIST.filter((c) => c.molt === m)] as [string, typeof CARD_LIST])];
       body = groups.map(([name, cards]) => `<h2>${name} <small>${cards.filter((c) => seen.has(c.id)).length}/${cards.length}</small></h2><div class="grid-cards">${cards.map((c) => (seen.has(c.id) ? staticCardHTML(c.id, false, probe, {}) : `<div class="card unseen" data-type="${c.type}"><span>?</span></div>`)).join("")}</div>`).join("");
@@ -342,10 +375,31 @@ export class App implements RunAgent, Presenter {
       <button class="btn ghost" data-nav data-back>${icon("back")}</button>
     </div></section>`);
     el.querySelectorAll<HTMLElement>("[data-tab]").forEach((b) => b.addEventListener("click", () => this.showLibrary(b.dataset.tab as "history" | "cards" | "bones")));
+    el.querySelectorAll<HTMLElement>("[data-replay]").forEach((b) => b.addEventListener("click", async () => {
+      const r = meta.history[Number(b.dataset.replay)];
+      if (!r || r.daily) return;
+      this.ui();
+      if (await this.persist.loadRun()) await this.persist.clearRun();
+      this.startRun(newRun({ seed: r.seed, molt: r.molt as MoltId, onboarding: false, ascension: r.turn ?? 0 }));
+    }));
     el.querySelector("[data-back]")!.addEventListener("click", () => void this.showTitle());
     this.view = "settings";
     this.settingsBack = () => void this.showTitle();
     this.setScreen(el);
+  }
+
+  /** Where your runs end, by enemy: the deaths worth practising against. */
+  private deathStatsHTML(): string {
+    const deaths = this.persist.meta.history.filter((r) => !r.win);
+    if (deaths.length < 3) return "";
+    const by = new Map<string, number>();
+    for (const d of deaths) {
+      const k = d.diedTo ? FOES[d.diedTo]?.name ?? d.diedTo : DEATH[d.reason] ?? d.reason;
+      by.set(k, (by.get(k) ?? 0) + 1);
+    }
+    const top = [...by].sort((a, b) => b[1] - a[1]).slice(0, 5);
+    const acts = [1, 2, 3].map((a) => deaths.filter((d) => d.act === a).length);
+    return `<div class="death-stats"><h2>Where you fall</h2>${top.map(([k, n]) => `<div class="bar-row"><span>${escapeHtml(k)}</span><i style="width:${Math.round((n / deaths.length) * 100)}%"></i><b>${n}</b></div>`).join("")}<p class="seed-line">By stratum: ${acts.map((n, i) => `${escapeHtml(ACT_NAMES[i + 1] ?? "")} ${n}`).join(" · ")}</p></div>`;
   }
 
   private ui(): void {
@@ -449,6 +503,81 @@ export class App implements RunAgent, Presenter {
       b.addEventListener("click", () => { if (!held) this.toast(`${BONES[b.dataset.bone!]?.name}: ${BONES[b.dataset.bone!]?.text}`); });
     });
     el.querySelector("[data-bones]")?.addEventListener("click", () => this.showBones());
+  }
+
+  /** A plain page of text (changelog, credits). Markdown-ish: # headings, - bullets, **bold**. */
+  private showText(title: string, md: string): void {
+    const html = md.split("\n").map((l) => {
+      const t = escapeHtml(l).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/`(.+?)`/g, "<code>$1</code>");
+      if (l.startsWith("## ")) return `<h3>${t.slice(3)}</h3>`;
+      if (l.startsWith("# ")) return "";
+      if (l.startsWith("- ")) return `<p class="bullet">${t.slice(2)}</p>`;
+      return t ? `<p>${t}</p>` : "";
+    }).join("");
+    const el = h(`<div class="overlay"><h2>${escapeHtml(title)}</h2><div class="text-page">${html}</div><button class="btn" data-nav data-autofocus data-close>${icon("back")}</button></div>`);
+    el.querySelector("[data-close]")!.addEventListener("click", () => this.closeOverlay());
+    this.openOverlay(el, () => this.closeOverlay());
+  }
+
+  /** Your whole save as one line of text: move it to another device, or keep a backup. */
+  private async saveExport(): Promise<void> {
+    await this.save();
+    const blob = { v: 1, meta: this.persist.meta, settings: this.s, run: this.ctl ? this.ctl.sync() : await this.persist.loadRun() };
+    const code = btoa(unescape(encodeURIComponent(JSON.stringify(blob))));
+    let copied = false;
+    try { await navigator.clipboard.writeText(code); copied = true; } catch { /* show it instead */ }
+    const el = h(`<div class="overlay"><h2>Save code</h2><p class="lines">${copied ? "Copied. Paste it into Load save code on your other device." : "Copy this and paste it into Load save code on your other device."}</p><textarea class="code-box" readonly rows="6">${escapeHtml(code)}</textarea><button class="btn" data-nav data-autofocus data-close>${icon("back")}</button></div>`);
+    el.querySelector("[data-close]")!.addEventListener("click", () => this.closeOverlay());
+    this.openOverlay(el, () => this.closeOverlay());
+    el.querySelector<HTMLTextAreaElement>("textarea")!.select();
+  }
+
+  private saveImport(): void {
+    const el = h(`<div class="overlay"><h2>Load save code</h2><p class="lines">This replaces everything on this device.</p><textarea class="code-box" rows="6" placeholder="Paste a save code"></textarea><div class="row"><button class="btn solid" data-nav data-load>Load</button><button class="btn ghost" data-nav data-close>${icon("back")}</button></div><p class="err" hidden></p></div>`);
+    el.querySelector("[data-close]")!.addEventListener("click", () => this.closeOverlay());
+    el.querySelector("[data-load]")!.addEventListener("click", async () => {
+      const err = el.querySelector<HTMLElement>(".err")!;
+      try {
+        const raw = el.querySelector<HTMLTextAreaElement>("textarea")!.value.trim();
+        const blob = JSON.parse(decodeURIComponent(escape(atob(raw)))) as { v: number; meta: Meta; settings: Settings; run: RunState | null };
+        if (blob.v !== 1 || !blob.meta || typeof blob.meta.runs !== "number") throw new Error("not a save code");
+        Object.assign(this.persist.meta, blob.meta);
+        Object.assign(this.s, blob.settings ?? {});
+        await this.persist.saveMeta();
+        await this.persist.saveSettings();
+        if (blob.run) await this.persist.saveRun(blob.run);
+        else await this.persist.clearRun();
+        this.closeOverlay();
+        this.applySettings();
+        this.ctl = null;
+        await this.showTitle();
+        this.toast("Save loaded");
+      } catch {
+        err.hidden = false;
+        err.textContent = "That code didn't load. Copy the whole thing and try again.";
+      }
+    });
+    this.openOverlay(el, () => this.closeOverlay());
+  }
+
+  /** Everything a bug report needs, ready to copy. */
+  private showReport(): void {
+    const run = this.run;
+    const report = [
+      `Spend Yourself v${__APP_VERSION__}`,
+      `When: ${new Date().toISOString()}`,
+      `Device: ${navigator.userAgent}`,
+      `Screen: ${innerWidth}×${innerHeight} @${devicePixelRatio}${matchMedia("(display-mode: standalone)").matches ? " installed" : ""}`,
+      run ? `Run: ${run.molt} seed ${run.seed} turn ${run.ascension} · act ${run.act} row ${run.row + 1} · ${run.screen.kind}` : "Run: none",
+      "Recent errors:",
+      ...(errorLog().length ? errorLog() : ["(none)"]),
+    ].join("\n");
+    const el = h(`<div class="overlay"><h2>Report a problem</h2><p class="lines">Say what happened in a line or two, then send this along with it.</p><textarea class="code-box" rows="10" readonly>${escapeHtml(report)}</textarea><div class="row"><button class="btn solid" data-nav data-autofocus data-copy>Copy</button><button class="btn ghost" data-nav data-close>${icon("back")}</button></div></div>`);
+    el.querySelector("[data-close]")!.addEventListener("click", () => this.closeOverlay());
+    el.querySelector("[data-copy]")!.addEventListener("click", async (ev) => {
+      try { await navigator.clipboard.writeText(report); (ev.currentTarget as HTMLElement).textContent = "Copied"; } catch { el.querySelector<HTMLTextAreaElement>("textarea")!.select(); }
+    });
+    this.openOverlay(el, () => this.closeOverlay());
   }
 
   /** Why the run ended, in a sentence or two. */
@@ -603,10 +732,11 @@ export class App implements RunAgent, Presenter {
           <div class="foes"></div>
           <div class="core"><div class="left"></div><div class="might"><b>0</b><span class="label">Might</span></div><div class="right"></div></div>
           <div class="handzone"><svg class="body" aria-hidden="true"></svg><div class="hand" aria-label="Your hand"></div><div class="preview"></div></div>
-          <div class="actions"><button class="btn end" data-end>End turn</button></div>
+          <div class="actions"><button class="btn ghost undo" data-undo hidden>${icon("back")} Undo</button><button class="btn end" data-end><i class="glyph" aria-hidden="true">X</i>End turn</button></div>
         </div>
       </section>`);
       el.querySelector("[data-end]")!.addEventListener("click", () => void this.endTurn());
+      el.querySelector("[data-undo]")!.addEventListener("click", () => this.undo());
       this.setScreen(el, false);
       this.fightEl = el;
       if (run.onboarding && run.fightIndex === 0 && !this.persist.taught("guided")) {
@@ -628,9 +758,13 @@ export class App implements RunAgent, Presenter {
     const b = c.body;
     this.refreshPreview(c);
     // bar
-    const barSlot = el.querySelector(".bar-slot")!;
-    barSlot.innerHTML = this.barHTML(false);
-    this.wireBar(barSlot as HTMLElement);
+    const barSlot = el.querySelector<HTMLElement>(".bar-slot")!;
+    const bar = this.barHTML(false);
+    if (barSlot.dataset.html !== bar) {
+      barSlot.innerHTML = bar;
+      barSlot.dataset.html = bar;
+      this.wireBar(barSlot);
+    }
     // foes: plates scale to the space left above the hand
     const foesEl = el.querySelector<HTMLElement>(".foes")!;
     foesEl.style.setProperty("--art-h", `${Math.max(60, foesEl.clientHeight - 96)}px`);
@@ -648,13 +782,13 @@ export class App implements RunAgent, Presenter {
     }
     const fc = c.forecast();
     if (fc.incoming > 0) this.tip("forecast");
-    el.querySelector(".core .left")!.innerHTML =
+    setHTML(el.querySelector(".core .left")!,
       (fc.incoming > 0 ? `<span class="plate forecast${fc.lethal ? " lethal" : ""}${fc.landed === 0 ? " safe" : ""}" title="Wounds that land when you end your turn">${icon("claw")}${fc.landed === 0 ? "0" : `−${fc.landed}`}${this.pv && this.pv.landed < fc.landed ? `<span class="pv-arrow">→</span>${this.pv.landed === 0 ? "0" : `−${this.pv.landed}`}` : ""}${fc.lethal && !(this.pv && !this.pv.lethal) ? `<em>lethal</em>` : ""}</span>` : "") +
       (b.block ? `<span class="plate blockplate">${icon("shield")}${b.block >= 99 ? "∞" : b.block}</span>` : "") +
       (big && c.bigActive() ? `<span class="plate big" title="Big: every hit lands ${c.bigExtra()} more wound${c.bigExtra() > 1 ? "s" : ""}">${icon("scale")}+${c.bigExtra()}</span>` : "") +
-      (s.selfPoison ? `<span class="plate pz">${icon("drop")}${s.selfPoison}</span>` : "");
-    el.querySelector(".core .right")!.innerHTML = `<button class="pile" data-pile="draw" title="Draw pile">${icon("draw")}${b.draw.length}</button><button class="pile" data-pile="discard" title="Discard pile">${icon("discard")}${b.discard.length}</button><span class="pile hand-count" title="Hand ${b.hand.length} of ${b.maxHand}. Big at ${b.bigAt} cards; Heavy at max hand ${b.heavyAt}.">${icon("scale")}${b.hand.length}/${b.maxHand}${this.meterHTML(b.hand.length, b.maxHand, b.bigAt)}</span>`;
-    el.querySelectorAll<HTMLElement>("[data-pile]").forEach((p) => p.addEventListener("click", () => this.showPile(p.dataset.pile as "draw" | "discard")));
+      (s.selfPoison ? `<span class="plate pz">${icon("drop")}${s.selfPoison}</span>` : ""));
+    const rightChanged = setHTML(el.querySelector(".core .right")!, `<button class="pile" data-pile="draw" title="Draw pile">${icon("draw")}${b.draw.length}</button><button class="pile" data-pile="discard" title="Discard pile">${icon("discard")}${b.discard.length}</button><span class="pile hand-count" title="Hand ${b.hand.length} of ${b.maxHand}. Big at ${b.bigAt} cards; Heavy at max hand ${b.heavyAt}.">${icon("scale")}${b.hand.length}/${b.maxHand}${this.meterHTML(b.hand.length, b.maxHand, b.bigAt)}</span>`);
+    if (rightChanged) el.querySelectorAll<HTMLElement>("[data-pile]").forEach((p) => p.addEventListener("click", () => this.showPile(p.dataset.pile as "draw" | "discard")));
     if (big && !this.persist.taught("tip.big")) this.audio.play("size.big");
     if (big) this.tip("big");
     this.contextTips(c);
@@ -663,6 +797,11 @@ export class App implements RunAgent, Presenter {
     // actions / banner
     const end = el.querySelector<HTMLButtonElement>("[data-end]")!;
     end.disabled = !!s.over || c.busy || !!this.picking;
+    const undoBtn = el.querySelector<HTMLButtonElement>("[data-undo]")!;
+    undoBtn.hidden = !(this.s.undo && this.undoSnap && this.undoSnap.turn === s.turn && !s.over && !c.busy && !this.picking);
+    // Screen readers: the forecast and might in words.
+    const fcw = c.forecast();
+    el.querySelector(".might")!.setAttribute("aria-label", `Might ${m}. ${fcw.landed ? `${fcw.landed} wound${fcw.landed > 1 ? "s" : ""} will land when you end your turn${fcw.lethal ? ", which is lethal" : ""}.` : "No wounds will land."}`);
     this.renderBanner(el, c);
     this.audio.setBody(b.hand.length, b.maxHand);
     if (this.guided) this.updateGuide(el, c);
@@ -841,7 +980,8 @@ export class App implements RunAgent, Presenter {
       if (crack) crack.style.display = f.phase === 2 ? "" : "none";
       const intent = n.querySelector(".intent")!;
       const ord = actors.length > 1 && order.has(f.uid) ? `<i class="ord" title="Acts ${order.get(f.uid)}${["st", "nd", "rd"][order.get(f.uid)! - 1] ?? "th"}">${order.get(f.uid)}</i>` : "";
-      intent.innerHTML = f.alive ? ord + (f.skip > 0 ? `<span class="act">${icon("rest")}</span>` : this.intentHTML(c, f, f.intent)) + (f.alive && (lens || f.revealed > 0) ? this.intentHTML(c, f, c.peekIntent(f), true) : "") : "";
+      intent.setAttribute("aria-label", f.alive ? (f.skip > 0 ? "Skips its move" : f.intent.map((a) => intentWords(a.k, a.k === "atk" ? c.attackValue(f, a.n) : "n" in a ? a.n : undefined, a.k === "atk" ? c.attackHits(f, a.x ?? 1) : "x" in a ? a.x : undefined)).join(", ")) : "");
+      setHTML(intent, f.alive ? ord + (f.skip > 0 ? `<span class="act">${icon("rest")}</span>` : this.intentHTML(c, f, f.intent)) + (f.alive && (lens || f.revealed > 0) ? this.intentHTML(c, f, c.peekIntent(f), true) : "") : "");
       n.querySelector<HTMLElement>(".hpbar i")!.style.width = `${Math.max(0, (f.hp / f.max) * 100)}%`;
       const pz = Math.min(f.hp, c.poisonTick(f));
       const bEl = n.querySelector<HTMLElement>(".hpbar b")!;
@@ -857,15 +997,15 @@ export class App implements RunAgent, Presenter {
       }
       n.classList.toggle("will-die", !!this.pv?.dead.has(f.uid));
       n.classList.toggle("doomed", c.diesToPoison(f));
-      n.querySelector(".hpnum")!.innerHTML = `${Math.max(0, f.hp)}${hurt ? `<em class="pvhp">→${pvHp}${this.pv!.approx ? "?" : ""}</em>` : ""}/${f.max}${f.block ? ` <span>${icon("shield").replace("<svg", '<svg style="width:14px;height:14px"')}${f.block}</span>` : ""}`;
-      n.querySelector(".status")!.innerHTML = [
+      setHTML(n.querySelector(".hpnum")!, `${Math.max(0, f.hp)}${hurt ? `<em class="pvhp">→${pvHp}${this.pv!.approx ? "?" : ""}</em>` : ""}/${f.max}${f.block ? ` <span>${icon("shield").replace("<svg", '<svg style="width:14px;height:14px"')}${f.block}</span>` : ""}`);
+      setHTML(n.querySelector(".status")!, [
         f.poison ? `<span class="pz" title="Poison: ${c.poisonTick(f)} damage at the start of its turn">${icon("drop")}${f.poison}${f.slowRot ? "∞" : ""}</span>` : "",
         c.diesToPoison(f) ? `<span class="doom" title="Poison kills it before it acts">${icon("skull")}next turn</span>` : "",
         f.weak ? `<span title="Weakened">${icon("weak")}${f.weak}</span>` : "",
         f.str ? `<span title="Strength">${icon("buff")}${f.str}</span>` : "",
         f.mark ? `<span title="Marked">+${f.mark}</span>` : "",
         f.cancelEat ? `<span title="Eat and bind cancelled">${icon("lock")}</span>` : "",
-      ].join("");
+      ].join(""));
       n.setAttribute("aria-label", `${def.name}, ${f.hp} of ${f.max}`);
     }
   }
@@ -878,7 +1018,8 @@ export class App implements RunAgent, Presenter {
     const W = zone.clientWidth || innerWidth;
     const H = zone.clientHeight || 200;
     const compact = W < 700 || H < 230;
-    const cw = compact ? Math.min(84, Math.max(62, W / 5.2)) : Math.min(150, H * 0.62);
+    const grow = Math.min(1.3, this.s.textScale);
+    const cw = (compact ? Math.min(84, Math.max(62, W / 5.2)) : Math.min(150, H * 0.62)) * grow;
     const ch = cw * 1.48;
     const n = hand.length;
     const span = n > 1 ? Math.min(W - cw - 24, (n - 1) * cw * 0.86) : 0;
@@ -910,12 +1051,14 @@ export class App implements RunAgent, Presenter {
         node.classList.add("entering");
         this.wireCard(node, card.uid);
         wrap.appendChild(node);
-      } else {
+      } else if (this.cardHtml.get(node) !== html) {
+        // Only touch the DOM when the card actually changed (numbers, coil, state).
         const tmp = h(html);
         node.innerHTML = tmp.innerHTML;
         node.className = tmp.className;
         node.setAttribute("aria-label", tmp.getAttribute("aria-label") ?? "");
       }
+      this.cardHtml.set(node, html);
       node.style.setProperty("--w", `${cw}px`);
       node.style.left = `${x - cw / 2}px`;
       node.style.bottom = `${bottom}px`;
@@ -932,7 +1075,7 @@ export class App implements RunAgent, Presenter {
     const pv = zone.querySelector<HTMLElement>(".preview")!;
     const peekCard = this.peek !== null ? hand.find((x) => x.uid === this.peek) : undefined;
     const selCard = peekCard ?? (compact && !picking ? hand.find((x) => x.uid === this.sel) : undefined);
-    pv.innerHTML = selCard ? cardHTML(selCard, c, { inHand: true }) + (selCard.uid === this.sel && !peekCard ? this.previewSummary(c) : "") : "";
+    setHTML(pv, selCard ? cardHTML(selCard, c, { inHand: true }) + (selCard.uid === this.sel && !peekCard ? this.previewSummary(c) : "") : "");
     // Sit the enlarged card over its place in the fan, inside the screen.
     const selIdx = selCard ? hand.indexOf(selCard) : -1;
     if (selIdx >= 0) {
@@ -1107,6 +1250,7 @@ export class App implements RunAgent, Presenter {
 
   private async playCard(uid: number, target?: number): Promise<void> {
     const c = this.combat!;
+    if (this.s.undo) this.undoSnap = { turn: c.s.turn, s: structuredClone(c.s), run: this.runSnapshot() };
     this.sel = null;
     this.removal.set(uid, "play");
     if (!this.persist.taught("play-fang")) this.persist.teach("play-fang");
@@ -1117,17 +1261,41 @@ export class App implements RunAgent, Presenter {
     if (c.s.over) await this.after();
   }
 
+  private runSnapshot(): Partial<RunState> {
+    const r = this.run!;
+    return structuredClone({ deck: r.deck, bones: r.bones, maxHand: r.maxHand, scars: r.scars, glint: r.glint, stats: r.stats, nextFight: r.nextFight, lastDevoured: r.lastDevoured });
+  }
+
+  private undo(): void {
+    const c = this.combat;
+    const snap = this.undoSnap;
+    const run = this.run;
+    if (!c || !snap || !run || c.busy || this.picking || snap.turn !== c.s.turn || run.screen.kind !== "combat") return;
+    c.s = snap.s;
+    run.screen.combat = snap.s;
+    Object.assign(run, snap.run);
+    run.assisted = true;
+    this.undoSnap = null;
+    this.sel = null;
+    this.removal.clear();
+    this.fightEl?.querySelectorAll(".hand .card").forEach((n) => n.remove());
+    this.audio.play("ui.back");
+    this.updateFight();
+  }
+
   private async endTurn(): Promise<void> {
     const c = this.combat;
     if (!c || c.busy || c.s.over || this.picking) return;
+    this.undoSnap = null;
     const fc = c.forecast();
     if (fc.lethal && c.body.hand.some((x) => c.canPlay(x)) && this.endArmed < performance.now()) {
       this.endArmed = performance.now() + 3000;
       const btn = this.fightEl?.querySelector<HTMLElement>("[data-end]");
       if (btn) {
+        const label = btn.innerHTML;
         btn.textContent = "Lethal · end anyway?";
         btn.classList.add("warn");
-        setTimeout(() => { btn.textContent = "End turn"; btn.classList.remove("warn"); }, 3000);
+        setTimeout(() => { btn.innerHTML = label; btn.classList.remove("warn"); }, 3000);
       }
       this.audio.play("ui.back");
       return;
@@ -1737,7 +1905,8 @@ export class App implements RunAgent, Presenter {
     meta.runs++;
     if (sc.win) meta.wins++;
     meta.bestRow = Math.max(meta.bestRow, run.row + 1 + (run.act - 1) * 16);
-    meta.history.unshift({ at: Date.now(), molt: run.molt, win: sc.win, reason: sc.reason, row: run.row + 1, act: run.act, maxHand: run.maxHand - run.scars, fights: run.stats.fights, devoured: run.stats.devoured.length, seed: run.seed, ...(sc.ending ? { ending: sc.ending } : {}), turn: run.ascension, ...(run.daily ? { daily: run.daily } : {}) });
+    meta.history.unshift({ at: Date.now(), molt: run.molt, win: sc.win, reason: sc.reason, row: run.row + 1, act: run.act, maxHand: run.maxHand - run.scars, fights: run.stats.fights, devoured: run.stats.devoured.length, seed: run.seed, ...(sc.ending ? { ending: sc.ending } : {}), turn: run.ascension, ...(run.daily ? { daily: run.daily } : {}), ...(run.stats.diedTo ? { diedTo: run.stats.diedTo } : {}), ...(run.assisted ? { assisted: true } : {}) });
+    if (run.daily && !run.assisted) void submitDaily({ date: run.daily, molt: run.molt, win: sc.win, row: run.row + 1 + (run.act - 1) * 16, seed: run.seed });
     // Giving the Tail back its body: you carry one of its scales into the next descent.
     if (sc.win && sc.ending === "give") meta.tailScale = true;
     if (sc.win && sc.ending) {
@@ -1902,6 +2071,13 @@ export class App implements RunAgent, Presenter {
       row("tips", "Tips", s.tips ? "On" : "Off"),
       row("resetTips", "Show tips again", ""),
       row("glossary", "Glossary", ""),
+      row("hand", "End turn button", s.hand === "left" ? "Left thumb" : "Right thumb"),
+      row("undo", "Undo assist", s.undo ? "On (runs are marked)" : "Off"),
+      row("saveExport", "Copy save code", ""),
+      row("saveImport", "Load save code", ""),
+      row("report", "Report a problem", ""),
+      row("changelog", "What's new", `v${__APP_VERSION__}`),
+      row("credits", "Credits", ""),
       row("fullscreen", "Fullscreen", document.fullscreenElement ? "On" : "Off"),
     ].join("");
   }
@@ -1942,6 +2118,13 @@ export class App implements RunAgent, Presenter {
       case "glossary":
         this.showGlossary();
         return;
+      case "hand": s.hand = s.hand === "left" ? "right" : "left"; break;
+      case "undo": s.undo = !s.undo; break;
+      case "saveExport": return this.saveExport();
+      case "saveImport": return this.saveImport();
+      case "report": return this.showReport();
+      case "changelog": return this.showText("What's new", CHANGELOG);
+      case "credits": return this.showText("Credits", CREDITS);
       case "fullscreen":
         try {
           if (document.fullscreenElement) await document.exitFullscreen();
